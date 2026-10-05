@@ -58,7 +58,7 @@ fun SwingcheckNavHost(container: AppContainer) {
             )
         }
         if (DEBUG_TOOLS_ENABLED) {
-            composable(Routes.DEV) { DevScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.DEV) { DevScreen(container, onBack = { nav.popBackStack() }) }
         }
     }
 }

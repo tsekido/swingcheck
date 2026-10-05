@@ -2,11 +2,7 @@ package jp.co.updates.swingcheck
 
 import android.content.Context
 import android.net.Uri
-import jp.co.updates.swingcheck.analysis.AnalysisScheduler
-import jp.co.updates.swingcheck.data.SwingEntity
 import jp.co.updates.swingcheck.data.SwingFiles
-import jp.co.updates.swingcheck.data.SwingRepository
-import jp.co.updates.swingcheck.settings.SettingsRepository
 import jp.co.updates.swingcheck.video.VideoFrameReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,9 +15,7 @@ import java.io.IOException
 class VideoImporter(
     private val context: Context,
     private val files: SwingFiles,
-    private val repository: SwingRepository,
-    private val settings: SettingsRepository,
-    private val scheduler: AnalysisScheduler,
+    private val registrar: SwingRegistrar,
 ) {
     /** @return 作った Swing の id。動画として読めなければ [IOException]（コピーは消す）。 */
     suspend fun import(uri: Uri): Long {
@@ -38,18 +32,6 @@ class VideoImporter(
                 throw e
             }
         }
-        val id = repository.insert(
-            SwingEntity(
-                createdAt = System.currentTimeMillis(),
-                videoPath = path,
-                fps = info.fps,
-                frameCount = info.frameCount,
-                width = info.width,
-                height = info.height,
-                heightCm = settings.current().defaultHeightCm,
-            ),
-        )
-        scheduler.enqueue(id)
-        return id
+        return registrar.register(path, info.fps, info.frameCount, info.width, info.height)
     }
 }

@@ -14,7 +14,10 @@ class AnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWork
     override suspend fun doWork(): Result {
         val swingId = inputData.getLong(KEY_SWING_ID, -1L)
         if (swingId < 0) return Result.failure()
-        (applicationContext as SwingcheckApp).container.analysisPipeline.run(swingId)
+        val container = (applicationContext as SwingcheckApp).container
+        // 撮影中は始めない。待っている間に WorkManager に止められたら、あとで自動的にやり直される
+        container.analysisGate.awaitIdle()
+        container.analysisPipeline.run(swingId)
         return Result.success()
     }
 

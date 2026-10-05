@@ -8,12 +8,17 @@
     <string name="common_delete">Delete</string>
 
     <!-- Capture -->
-    <string name="capture_camera_placeholder">Camera (not implemented)</string>
     <string name="capture_guide_description">Positioning guide</string>
     <plurals name="capture_saved_count">
         <item quantity="one">%d swing saved</item>
         <item quantity="other">%d swings saved</item>
     </plurals>
+    <string name="capture_fps_info">%1$d fps · %2$d×%3$d</string>
+    <string name="capture_starting">Starting camera…</string>
+    <string name="capture_error">Camera is not available: %1$s</string>
+    <string name="capture_permission_message">Camera permission is needed to record your swing.</string>
+    <string name="capture_permission_request">Allow camera</string>
+    <string name="capture_permission_open_settings">Open app settings</string>
     <string name="capture_open_list">Swings</string>
     <string name="capture_open_settings">Settings</string>
 
@@ -99,7 +104,7 @@
 
     <!-- Developer tools (debug builds) -->
     <string name="dev_title">Developer tools</string>
-    <string name="dev_high_speed_title">High-speed capture support (Camera2)</string>
+    <string name="dev_capture_title">Capture pipeline and high-speed capture support (Camera2)</string>
     <string name="dev_copy">Copy as text</string>
     <string name="dev_copied">Copied</string>
     <string name="dev_loading">Loading…</string>

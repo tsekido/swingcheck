@@ -5,6 +5,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import jp.co.updates.swingcheck.AppContainer
 import jp.co.updates.swingcheck.VideoImporter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -13,7 +14,7 @@ import kotlinx.coroutines.launch
 const val DEBUG_TOOLS_ENABLED = true
 
 @Composable
-fun DevScreen(onBack: () -> Unit) = DevScreenContent(onBack)
+fun DevScreen(container: AppContainer, onBack: () -> Unit) = DevScreenContent(container, onBack)
 
 /** 端末内の動画を選んで取り込む（Photo Picker）。選ばれたら [onStarted]、終わったら [onFinished]。 */
 @Composable

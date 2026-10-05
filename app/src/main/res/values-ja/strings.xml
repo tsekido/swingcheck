@@ -8,11 +8,16 @@
     <string name="common_delete">削除</string>
 
     <!-- 撮影 -->
-    <string name="capture_camera_placeholder">カメラ（未実装）</string>
     <string name="capture_guide_description">立ち位置のガイド</string>
     <plurals name="capture_saved_count">
         <item quantity="other">%dスイング保存済み</item>
     </plurals>
+    <string name="capture_fps_info">%1$d fps · %2$d×%3$d</string>
+    <string name="capture_starting">カメラを起動中…</string>
+    <string name="capture_error">カメラを使えません：%1$s</string>
+    <string name="capture_permission_message">スイングを撮影するために、カメラの許可が必要です。</string>
+    <string name="capture_permission_request">カメラを許可する</string>
+    <string name="capture_permission_open_settings">アプリの設定を開く</string>
     <string name="capture_open_list">一覧</string>
     <string name="capture_open_settings">設定</string>
 
@@ -97,7 +102,7 @@
 
     <!-- 開発用画面（debug ビルド） -->
     <string name="dev_title">開発用画面</string>
-    <string name="dev_high_speed_title">高速撮影の対応状況（Camera2）</string>
+    <string name="dev_capture_title">撮影パイプラインの設定と高速撮影の対応状況（Camera2）</string>
     <string name="dev_copy">テキストでコピー</string>
     <string name="dev_copied">コピーしました</string>
     <string name="dev_loading">読み込み中…</string>

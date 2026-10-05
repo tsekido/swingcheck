@@ -37,7 +37,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import jp.co.updates.swingcheck.AppContainer
 import jp.co.updates.swingcheck.R
+import jp.co.updates.swingcheck.capture.CameraCapabilitiesReader
+import jp.co.updates.swingcheck.capture.CaptureConfigSelector
+import jp.co.updates.swingcheck.settings.FpsMode
 import jp.co.updates.swingcheck.ui.dev.CameraReport
 import jp.co.updates.swingcheck.ui.dev.DeviceReport
 import jp.co.updates.swingcheck.ui.dev.HighSpeedSize
@@ -46,14 +51,31 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun DevScreenContent(onBack: () -> Unit) {
+internal fun DevScreenContent(container: AppContainer, onBack: () -> Unit) {
     val context = LocalContext.current
-    var text by remember { mutableStateOf<String?>(null) }
+    var cameraText by remember { mutableStateOf<String?>(null) }
+    var selectionText by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        text = withContext(Dispatchers.IO) {
+        cameraText = withContext(Dispatchers.IO) {
             runCatching { CameraReportReader.read(context).toText() }
                 .getOrElse { "failed to read camera characteristics: $it" }
         }
+        val mode = container.settingsRepository.current().fpsMode
+        selectionText = withContext(Dispatchers.IO) {
+            runCatching { selectionReport(context, mode) }.getOrElse { "failed to select capture config: $it" }
+        }
+    }
+    val lastInfo by container.captureController.lastInfo.collectAsStateWithLifecycle()
+    val debug by container.captureController.debug.collectAsStateWithLifecycle()
+    // 撮影画面で最後に動いた設定（撮影画面を一度も開いていなければ空）
+    val text = if (cameraText == null || selectionText == null) null else buildString {
+        appendLine("== capture pipeline (selected for fpsMode, per back camera) ==")
+        appendLine(selectionText)
+        appendLine("== capture pipeline (last run on the capture screen) ==")
+        appendLine(lastInfo?.toText() ?: "(not run yet)")
+        if (lastInfo != null) appendLine(debug.toText())
+        appendLine()
+        append(cameraText)
     }
     Scaffold(
         topBar = {
@@ -71,7 +93,7 @@ internal fun DevScreenContent(onBack: () -> Unit) {
             Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(stringResource(R.string.dev_high_speed_title))
+            Text(stringResource(R.string.dev_capture_title))
             Button(
                 enabled = text != null,
                 onClick = {
@@ -84,6 +106,23 @@ internal fun DevScreenContent(onBack: () -> Unit) {
                 Text(text ?: stringResource(R.string.dev_loading), fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             }
         }
+    }
+}
+
+/** 設定の fpsMode で、背面カメラごとに実際に選ばれる撮影設定（カメラは開かない）。 */
+private fun selectionReport(context: Context, mode: FpsMode): String {
+    val cameras = CameraCapabilitiesReader.readBackCameras(context)
+    if (cameras.isEmpty()) return "(no back cameras)"
+    return buildString {
+        appendLine("fpsMode: $mode")
+        for (camera in cameras) {
+            val config = CaptureConfigSelector.select(
+                camera.caps, mode, CameraCapabilitiesReader::encoderSupports,
+            )
+            append("camera ${camera.caps.cameraId}: ")
+            appendLine(config?.let { "${it.sessionType} ${it.size} ${it.fps}fps AE ${it.fpsRange}" } ?: "(none)")
+        }
+        CameraCapabilitiesReader.findEncoder()?.let { appendLine("encoder: ${it.name}") }
     }
 }
 
