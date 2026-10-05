@@ -1,0 +1,168 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "27dd642b7f00531a24028b8c213988dc",
+    "entities": [
+      {
+        "tableName": "swing",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `createdAt` INTEGER NOT NULL, `videoPath` TEXT NOT NULL, `fps` REAL NOT NULL, `frameCount` INTEGER NOT NULL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `cameraView` TEXT NOT NULL, `handedness` TEXT NOT NULL, `heightCm` REAL, `memo` TEXT NOT NULL, `analysisStatus` TEXT NOT NULL, `ballResult` TEXT, `analysisVersion` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "videoPath",
+            "columnName": "videoPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fps",
+            "columnName": "fps",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "frameCount",
+            "columnName": "frameCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "width",
+            "columnName": "width",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "height",
+            "columnName": "height",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cameraView",
+            "columnName": "cameraView",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "handedness",
+            "columnName": "handedness",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "heightCm",
+            "columnName": "heightCm",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "memo",
+            "columnName": "memo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analysisStatus",
+            "columnName": "analysisStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ballResult",
+            "columnName": "ballResult",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "analysisVersion",
+            "columnName": "analysisVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "position_mark",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`swingId` INTEGER NOT NULL, `position` INTEGER NOT NULL, `autoFrame` INTEGER NOT NULL, `manualFrame` INTEGER, `autoUncertain` INTEGER NOT NULL, `metricsJson` TEXT NOT NULL, PRIMARY KEY(`swingId`, `position`), FOREIGN KEY(`swingId`) REFERENCES `swing`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "swingId",
+            "columnName": "swingId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoFrame",
+            "columnName": "autoFrame",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manualFrame",
+            "columnName": "manualFrame",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "autoUncertain",
+            "columnName": "autoUncertain",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "metricsJson",
+            "columnName": "metricsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "swingId",
+            "position"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "swing",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "swingId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '27dd642b7f00531a24028b8c213988dc')"
+    ]
+  }
+}
