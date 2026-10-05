@@ -70,11 +70,32 @@ object YuvConverter {
         return GrayImage.ofBytes(ow, oh, out)
     }
 
+    /** 長辺を maxLongSide 以下にしたときの出力の大きさ。すでに収まっていれば元のまま（拡大はしない）。 */
+    fun scaledSize(width: Int, height: Int, maxLongSide: Int): Pair<Int, Int> {
+        require(maxLongSide > 0) { "maxLongSide must be positive" }
+        val longSide = maxOf(width, height)
+        if (longSide <= maxLongSide) return width to height
+        val scale = maxLongSide.toDouble() / longSide
+        return maxOf(1, Math.round(width * scale).toInt()) to maxOf(1, Math.round(height * scale).toInt())
+    }
+
     /** ARGB_8888 の画素列（行優先）。回転後の幅は [rotatedSize] で求める。 */
     fun toArgb(frame: YuvFrame, degrees: Int, color: YuvColor): IntArray {
+        val (ow, oh) = rotatedSize(frame.width, frame.height, degrees)
+        return toArgbScaled(frame, degrees, color, maxOf(ow, oh))
+    }
+
+    /**
+     * [toArgb] と同じ変換を、長辺が maxLongSide 以下になるように縮小しながら行う（最近傍のサンプリング）。
+     * 変換する画素数が減るので、縮小してから変換するより速い。出力の大きさは
+     * `scaledSize(回転後の幅, 回転後の高さ, maxLongSide)`。
+     */
+    fun toArgbScaled(frame: YuvFrame, degrees: Int, color: YuvColor, maxLongSide: Int): IntArray {
         val w = frame.width
         val h = frame.height
-        val out = IntArray(w * h)
+        val (rw, rh) = rotatedSize(w, h, degrees)
+        val (tw, th) = scaledSize(rw, rh, maxLongSide)
+        val out = IntArray(tw * th)
 
         // 固定小数点の係数（Y のスケール、V→R、U→G、V→G、U→B）
         val yScale: Int
@@ -103,18 +124,29 @@ object YuvConverter {
             bu = fix(1.772 * chromaScale)
         }
 
-        for (y in 0 until h) {
-            val yRow = (y + frame.cropTop) * frame.yRowStride
-            val uvRow = ((y + frame.cropTop) shr 1) * frame.uvRowStride
-            for (x in 0 until w) {
-                val yy = ((frame.y[yRow + (x + frame.cropLeft) * frame.yPixelStride].toInt() and 0xFF) - yOffset) * yScale
-                val uvIndex = uvRow + ((x + frame.cropLeft) shr 1) * frame.uvPixelStride
+        for (dy in 0 until th) {
+            // 回転後の画像での、サンプリングする行（出力の画素の中心に当たる位置）
+            val ry = ((dy * 2L + 1) * rh / (th * 2L)).toInt().coerceIn(0, rh - 1)
+            for (dx in 0 until tw) {
+                val rx = ((dx * 2L + 1) * rw / (tw * 2L)).toInt().coerceIn(0, rw - 1)
+                // 回転後の (rx, ry) に対応する元画像の (x, y)
+                val x: Int
+                val y: Int
+                when (degrees) {
+                    0 -> { x = rx; y = ry }
+                    90 -> { x = ry; y = h - 1 - rx }
+                    180 -> { x = w - 1 - rx; y = h - 1 - ry }
+                    270 -> { x = w - 1 - ry; y = rx }
+                    else -> throw IllegalArgumentException("rotation must be 0, 90, 180 or 270: $degrees")
+                }
+                val yy = ((frame.y[(y + frame.cropTop) * frame.yRowStride + (x + frame.cropLeft) * frame.yPixelStride].toInt() and 0xFF) - yOffset) * yScale
+                val uvIndex = ((y + frame.cropTop) shr 1) * frame.uvRowStride + ((x + frame.cropLeft) shr 1) * frame.uvPixelStride
                 val d = (frame.u[uvIndex].toInt() and 0xFF) - 128
                 val e = (frame.v[uvIndex].toInt() and 0xFF) - 128
                 val r = (yy + rv * e + (ONE shr 1)) shr SHIFT
                 val g = (yy - gu * d - gv * e + (ONE shr 1)) shr SHIFT
                 val b = (yy + bu * d + (ONE shr 1)) shr SHIFT
-                out[destIndex(x, y, w, h, degrees)] =
+                out[dy * tw + dx] =
                     (0xFF shl 24) or (r.coerceIn(0, 255) shl 16) or (g.coerceIn(0, 255) shl 8) or b.coerceIn(0, 255)
             }
         }

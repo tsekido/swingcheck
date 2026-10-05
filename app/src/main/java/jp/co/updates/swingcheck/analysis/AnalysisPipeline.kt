@@ -103,9 +103,10 @@ class AnalysisPipeline(
                 ensureActive()
                 val ts = Timestamps.nextAfter(lastTs, frame.timestampMs)
                 lastTs = ts
-                val bitmap = frame.toBitmap()
+                // 骨格の座標は正規化座標なので、縮小しても結果の意味は変わらない。保存する動画の大きさは元のまま
+                val bitmap = frame.toBitmap(POSE_INPUT_MAX_LONG_SIDE)
                 try {
-                    if (out.isEmpty()) size = bitmap.width to bitmap.height
+                    if (out.isEmpty()) size = frame.displaySize()
                     val pose = estimator.estimate(bitmap, ts)
                     out += if (pose != null) pose to true else PoseFrames.undetected(ts) to false
                 } finally {
@@ -140,6 +141,9 @@ class AnalysisPipeline(
 
     private companion object {
         const val TAG = "AnalysisPipeline"
+
+        /** MediaPipe に渡す画像の長辺（ピクセル）。モデルの入力は 256 前後なので、これで十分。 */
+        const val POSE_INPUT_MAX_LONG_SIDE = 640
     }
 }
 

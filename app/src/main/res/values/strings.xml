@@ -1,4 +1,106 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">swingcheck</string>
+
+    <!-- Common -->
+    <string name="nav_back">Back</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_delete">Delete</string>
+
+    <!-- Capture -->
+    <string name="capture_camera_placeholder">Camera (not implemented)</string>
+    <string name="capture_guide_description">Positioning guide</string>
+    <plurals name="capture_saved_count">
+        <item quantity="one">%d swing saved</item>
+        <item quantity="other">%d swings saved</item>
+    </plurals>
+    <string name="capture_open_list">Swings</string>
+    <string name="capture_open_settings">Settings</string>
+
+    <!-- List -->
+    <string name="list_title">Swings</string>
+    <string name="list_empty">No swings yet</string>
+    <string name="list_status_pending">Waiting for analysis</string>
+    <string name="list_status_running">Analyzing…</string>
+    <string name="list_status_failed">Analysis failed</string>
+    <string name="list_not_ready">Analysis is not finished yet</string>
+    <string name="list_selected_count">%1$d selected</string>
+    <string name="list_cancel_selection">Cancel selection</string>
+    <string name="list_delete">Delete</string>
+    <string name="list_delete_title">Delete swings?</string>
+    <plurals name="list_delete_message">
+        <item quantity="one">%d swing and its video will be deleted. This cannot be undone.</item>
+        <item quantity="other">%d swings and their videos will be deleted. This cannot be undone.</item>
+    </plurals>
+    <string name="list_import_video">Import video (debug)</string>
+    <string name="list_importing">Importing…</string>
+    <string name="list_import_failed">Could not import the video</string>
+
+    <!-- Result -->
+    <string name="result_title">Analysis</string>
+    <string name="result_loading">Loading…</string>
+    <string name="result_not_ready">Analysis is not finished yet</string>
+    <string name="result_video_description">Swing video with skeleton overlay</string>
+    <string name="result_phase_button">P%1$d</string>
+    <string name="result_phase_button_uncertain">P%1$d?</string>
+    <string name="result_phase_state_manual">Adjusted manually</string>
+    <string name="result_phase_state_uncertain">Could not be estimated</string>
+    <string name="result_phase_menu_set">Set this frame as P%1$d</string>
+    <string name="result_phase_menu_reset">Reset to auto</string>
+    <string name="result_seekbar_description">Seek bar</string>
+    <string name="result_frame_position">Frame %1$d / %2$d</string>
+    <string name="result_play">Play</string>
+    <string name="result_pause">Pause</string>
+    <string name="result_prev_frame">Previous frame</string>
+    <string name="result_next_frame">Next frame</string>
+    <string name="result_metrics_phase">Values at P%1$d</string>
+    <string name="result_metrics_frame">Values at frame %1$d</string>
+    <string name="result_metrics_unavailable">No values for this frame</string>
+    <string name="result_metrics_note">Sway and Lift are measured from P1. Positive is toward the target / upward.</string>
+    <string name="result_height_note">Length conversion has an error of a few centimeters.</string>
+
+    <!-- Metrics -->
+    <string name="metric_head_sway">Head Sway</string>
+    <string name="metric_head_lift">Head Lift</string>
+    <string name="metric_shoulder_tilt">Shoulder Tilt</string>
+    <string name="metric_pelvis_side_bend">Pelvis Side Bend</string>
+    <string name="metric_pelvis_sway">Pelvis Sway</string>
+    <string name="metric_spine_tilt">Spine Tilt</string>
+    <string name="metric_knee_flex_left">Knee Flex (left)</string>
+    <string name="metric_knee_flex_right">Knee Flex (right)</string>
+    <string name="metric_elbow_flex_left">Elbow Flex (left)</string>
+    <string name="metric_elbow_flex_right">Elbow Flex (right)</string>
+    <string name="metric_percent">%1$s%% of shoulder width</string>
+    <string name="metric_length_cm">≈ %1$s cm</string>
+    <string name="metric_length_inch">≈ %1$s in</string>
+    <string name="metric_degrees">%1$s°</string>
+
+    <!-- Height and memo -->
+    <string name="height_label">Height</string>
+    <string name="height_cm_suffix">cm</string>
+    <string name="height_feet_label">ft</string>
+    <string name="height_inches_label">in</string>
+    <string name="height_invalid">Enter a valid height</string>
+    <string name="memo_label">Memo</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_fps">Frame rate</string>
+    <string name="settings_fps_auto">Auto</string>
+    <string name="settings_fps_value">%1$d fps</string>
+    <string name="settings_default_height">Default height</string>
+    <string name="settings_default_height_note">Used as the initial height of newly recorded swings.</string>
+    <string name="settings_unit">Length unit</string>
+    <string name="settings_unit_cm">Centimeters (cm)</string>
+    <string name="settings_unit_inch">Inches (ft / in)</string>
+    <string name="settings_practice_filter">Exclude practice swings</string>
+    <string name="settings_practice_filter_description">Do not save swings where the ball is still in place.</string>
+    <string name="settings_dev_tools">Developer tools</string>
+
+    <!-- Developer tools (debug builds) -->
+    <string name="dev_title">Developer tools</string>
+    <string name="dev_high_speed_title">High-speed capture support (Camera2)</string>
+    <string name="dev_copy">Copy as text</string>
+    <string name="dev_copied">Copied</string>
+    <string name="dev_loading">Loading…</string>
 </resources>

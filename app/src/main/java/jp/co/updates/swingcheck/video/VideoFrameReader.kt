@@ -43,11 +43,23 @@ class DecodedFrame internal constructor(
 
     private fun frame(): YuvFrame = cached ?: yuv().also { cached = it }
 
-    /** 向きを直した ARGB_8888 のビットマップ。呼び出し側が recycle する。 */
-    fun toBitmap(): Bitmap {
+    /** 向きを直した（回転後の）画像の大きさ。[toBitmap] で縮小しても、これは元の大きさ。 */
+    fun displaySize(): Pair<Int, Int> {
         val f = frame()
-        val (w, h) = rotatedSize(f.width, f.height, info.rotation)
-        return Bitmap.createBitmap(YuvConverter.toArgb(f, info.rotation, color), w, h, Bitmap.Config.ARGB_8888)
+        return rotatedSize(f.width, f.height, info.rotation)
+    }
+
+    /**
+     * 向きを直した ARGB_8888 のビットマップ。呼び出し側が recycle する。
+     * [maxLongSide] を指定すると、長辺がそれ以下になるように、色の変換と同時に縮小する。
+     */
+    fun toBitmap(maxLongSide: Int? = null): Bitmap {
+        val f = frame()
+        val (rw, rh) = rotatedSize(f.width, f.height, info.rotation)
+        val (w, h) = if (maxLongSide == null) rw to rh else YuvConverter.scaledSize(rw, rh, maxLongSide)
+        val pixels = if (maxLongSide == null) YuvConverter.toArgb(f, info.rotation, color)
+        else YuvConverter.toArgbScaled(f, info.rotation, color, maxLongSide)
+        return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
     }
 
     /** 向きを直したグレースケール画像（ボール判定用）。 */

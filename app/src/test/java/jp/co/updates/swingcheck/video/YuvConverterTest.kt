@@ -97,4 +97,47 @@ class YuvConverterTest {
         assertEquals(1920 to 1080, rotatedSize(1920, 1080, 180))
         assertEquals(1920 to 1080, rotatedSize(1920, 1080, 0))
     }
+
+    @Test
+    fun scaledSizeKeepsAspectAndNeverEnlarges() {
+        assertEquals(360 to 640, YuvConverter.scaledSize(1080, 1920, 640))
+        assertEquals(640 to 360, YuvConverter.scaledSize(3840, 2160, 640))
+        assertEquals(480 to 640, YuvConverter.scaledSize(480, 640, 640))
+        assertEquals(320 to 240, YuvConverter.scaledSize(320, 240, 640))
+        assertEquals(1 to 640, YuvConverter.scaledSize(1, 6400, 640))
+    }
+
+    @Test
+    fun scaledArgbMatchesUnscaledWhenNotShrinking() {
+        val f = frame(IntArray(12) { 16 + it * 17 }, 4, 3)
+        for (deg in listOf(0, 90, 180, 270)) {
+            val full = YuvConverter.toArgb(f, deg, YuvColor.BT601_LIMITED)
+            val same = YuvConverter.toArgbScaled(f, deg, YuvColor.BT601_LIMITED, 100)
+            assertEquals(full.toList(), same.toList())
+        }
+    }
+
+    @Test
+    fun scaledArgbSamplesTheCenterOfEachBlock() {
+        // 4 × 4 を長辺 2 に縮小：各 2 × 2 ブロックの（中心に当たる）左上寄りの 1 画素を取る
+        val ys = IntArray(16) { 16 + it * 10 }
+        val f = frame(ys, 4, 4)
+        val small = YuvConverter.toArgbScaled(f, 0, YuvColor.BT601_FULL, 2)
+        assertEquals(4, small.size)
+        fun gray(c: Int) = c and 0xFF
+        // サンプル位置は (1, 1), (3, 1), (1, 3), (3, 3) ではなく、画素の中心 (0.5*2 → 1) に当たる添字 1 と 3
+        assertEquals(listOf(ys[5], ys[7], ys[13], ys[15]), small.map { gray(it) })
+    }
+
+    @Test
+    fun scaledArgbWithRotationHasRotatedShape() {
+        // 6 × 2 を 90 度回して 2 × 6、長辺 3 に縮小 → 1 × 3
+        val f = frame(IntArray(12) { 20 * it }, 6, 2)
+        val small = YuvConverter.toArgbScaled(f, 90, YuvColor.BT601_FULL, 3)
+        assertEquals(1 * 3, small.size)
+        // 回転後の列 0 は元の下の行（y=1）。縮小で行 0,1,2 は元の x = 0..5 のうち 1,3,5 を取る
+        val rotatedFull = YuvConverter.toArgb(f, 90, YuvColor.BT601_FULL)
+        // 回転後は幅 2、高さ 6。出力の画素 (0, i) は回転後の (1, 2i+1) をサンプルする
+        assertEquals(listOf(1, 3, 5).map { rotatedFull[it * 2 + 1] }, small.toList())
+    }
 }

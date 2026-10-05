@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">swingcheck</string>
+
+    <!-- 共通 -->
+    <string name="nav_back">戻る</string>
+    <string name="common_cancel">キャンセル</string>
+    <string name="common_delete">削除</string>
+
+    <!-- 撮影 -->
+    <string name="capture_camera_placeholder">カメラ（未実装）</string>
+    <string name="capture_guide_description">立ち位置のガイド</string>
+    <plurals name="capture_saved_count">
+        <item quantity="other">%dスイング保存済み</item>
+    </plurals>
+    <string name="capture_open_list">一覧</string>
+    <string name="capture_open_settings">設定</string>
+
+    <!-- 一覧 -->
+    <string name="list_title">スイング一覧</string>
+    <string name="list_empty">スイングはまだありません</string>
+    <string name="list_status_pending">解析待ち</string>
+    <string name="list_status_running">解析中…</string>
+    <string name="list_status_failed">解析に失敗</string>
+    <string name="list_not_ready">解析が完了していません</string>
+    <string name="list_selected_count">%1$d件を選択中</string>
+    <string name="list_cancel_selection">選択を解除</string>
+    <string name="list_delete">削除</string>
+    <string name="list_delete_title">スイングを削除しますか？</string>
+    <plurals name="list_delete_message">
+        <item quantity="other">%d件のスイングと動画を削除します。元に戻せません。</item>
+    </plurals>
+    <string name="list_import_video">動画を取り込む（開発用）</string>
+    <string name="list_importing">取り込み中…</string>
+    <string name="list_import_failed">動画を取り込めませんでした</string>
+
+    <!-- 解析結果 -->
+    <string name="result_title">解析結果</string>
+    <string name="result_loading">読み込み中…</string>
+    <string name="result_not_ready">解析が完了していません</string>
+    <string name="result_video_description">骨格を重ねたスイング動画</string>
+    <string name="result_phase_button">P%1$d</string>
+    <string name="result_phase_button_uncertain">P%1$d?</string>
+    <string name="result_phase_state_manual">手で直したコマ</string>
+    <string name="result_phase_state_uncertain">推定できなかったコマ</string>
+    <string name="result_phase_menu_set">このコマをP%1$dにする</string>
+    <string name="result_phase_menu_reset">自動に戻す</string>
+    <string name="result_seekbar_description">シークバー</string>
+    <string name="result_frame_position">コマ %1$d / %2$d</string>
+    <string name="result_play">再生</string>
+    <string name="result_pause">一時停止</string>
+    <string name="result_prev_frame">前のコマ</string>
+    <string name="result_next_frame">次のコマ</string>
+    <string name="result_metrics_phase">P%1$dの数値</string>
+    <string name="result_metrics_frame">コマ %1$dの数値</string>
+    <string name="result_metrics_unavailable">このコマの数値はありません</string>
+    <string name="result_metrics_note">横移動と上下移動は P1 を 0 とした値です。プラスは目標方向・上方向です。</string>
+    <string name="result_height_note">長さの換算には数cmの誤差があります。</string>
+
+    <!-- 表示項目 -->
+    <string name="metric_head_sway">頭の横移動（Head Sway）</string>
+    <string name="metric_head_lift">頭の上下移動（Head Lift）</string>
+    <string name="metric_shoulder_tilt">肩の傾き（Shoulder Tilt）</string>
+    <string name="metric_pelvis_side_bend">腰の傾き（Pelvis Side Bend）</string>
+    <string name="metric_pelvis_sway">腰の横移動（Pelvis Sway）</string>
+    <string name="metric_spine_tilt">背骨の傾き（Spine Tilt）</string>
+    <string name="metric_knee_flex_left">膝の角度・左（Knee Flex）</string>
+    <string name="metric_knee_flex_right">膝の角度・右（Knee Flex）</string>
+    <string name="metric_elbow_flex_left">肘の角度・左（Elbow Flex）</string>
+    <string name="metric_elbow_flex_right">肘の角度・右（Elbow Flex）</string>
+    <string name="metric_percent">肩幅の%1$s%%</string>
+    <string name="metric_length_cm">約%1$scm</string>
+    <string name="metric_length_inch">約%1$sin</string>
+    <string name="metric_degrees">%1$s°</string>
+
+    <!-- 身長・メモ -->
+    <string name="height_label">身長</string>
+    <string name="height_cm_suffix">cm</string>
+    <string name="height_feet_label">フィート</string>
+    <string name="height_inches_label">インチ</string>
+    <string name="height_invalid">正しい身長を入力してください</string>
+    <string name="memo_label">メモ</string>
+
+    <!-- 設定 -->
+    <string name="settings_title">設定</string>
+    <string name="settings_fps">フレームレート</string>
+    <string name="settings_fps_auto">自動</string>
+    <string name="settings_fps_value">%1$d fps</string>
+    <string name="settings_default_height">身長の初期値</string>
+    <string name="settings_default_height_note">新しく撮ったスイングの身長の初期値になります。</string>
+    <string name="settings_unit">長さの単位</string>
+    <string name="settings_unit_cm">センチメートル（cm）</string>
+    <string name="settings_unit_inch">インチ（フィート・インチ）</string>
+    <string name="settings_practice_filter">素振りを除外する</string>
+    <string name="settings_practice_filter_description">ボールが残っているスイングは保存しません。</string>
+    <string name="settings_dev_tools">開発用画面</string>
+
+    <!-- 開発用画面（debug ビルド） -->
+    <string name="dev_title">開発用画面</string>
+    <string name="dev_high_speed_title">高速撮影の対応状況（Camera2）</string>
+    <string name="dev_copy">テキストでコピー</string>
+    <string name="dev_copied">コピーしました</string>
+    <string name="dev_loading">読み込み中…</string>
+</resources>
