@@ -104,6 +104,10 @@ class CaptureController(
     private val _debug = MutableStateFlow(CaptureDebug())
     val debug: StateFlow<CaptureDebug> = _debug
 
+    /** 撮影設定が強制指定されている（debug 版だけ）。撮影画面に出す。 */
+    private val _forced = MutableStateFlow<ForcedCapture?>(null)
+    val forced: StateFlow<ForcedCapture?> = _forced
+
     /** 最後に選ばれた設定（撮影を止めても残る。開発用画面で見る）。 */
     private val _lastInfo = MutableStateFlow<CaptureInfo?>(null)
     val lastInfo: StateFlow<CaptureInfo?> = _lastInfo
@@ -134,6 +138,8 @@ class CaptureController(
         val displayRotationDegrees: Int,
         val configs: List<CaptureConfig>,
         val sensorOrientations: Map<String, Int>,
+        /** 強制指定（debug 版だけ）。その設定だけを試し、やり直しも失敗の記録もしない。 */
+        val forced: ForcedCapture? = null,
     )
 
     private fun startOnControl(previewSurface: Surface, displayRotationDegrees: Int) {
@@ -147,12 +153,17 @@ class CaptureController(
         }
         _status.value = CaptureStatus(CaptureStatus.State.STARTING)
         val attempts = try {
+            val forced = DebugForcedCapture.read(context)
+            _forced.value = forced
             val mode = runBlocking { settings.current().fpsMode }
             val failed = runBlocking { settings.failedCaptureSettings.first() }.mapNotNull(FailedSetting::decode).toSet()
             val cameras = CameraCapabilitiesReader.readBackCameras(context)
-            val configs = CapturePlanner.plan(cameras.map { it.caps }, mode, CameraCapabilitiesReader::encoderSupports, failed)
-            if (configs.isEmpty()) error("no supported capture configuration (back cameras: ${cameras.size})")
-            Attempts(previewSurface, displayRotationDegrees, configs, cameras.associate { it.caps.cameraId to it.sensorOrientation })
+            val configs = CapturePlanner.plan(cameras.map { it.caps }, mode, CameraCapabilitiesReader::encoderSupports, failed, forced)
+            if (configs.isEmpty()) {
+                if (forced != null) error("forced setting is not available on this device: $forced")
+                error("no supported capture configuration (back cameras: ${cameras.size})")
+            }
+            Attempts(previewSurface, displayRotationDegrees, configs, cameras.associate { it.caps.cameraId to it.sensorOrientation }, forced)
         } catch (e: Throwable) {
             Log.e(TAG, "start failed", e)
             _status.value = CaptureStatus(CaptureStatus.State.ERROR, error = e.message ?: e.toString())
@@ -181,6 +192,8 @@ class CaptureController(
                 gate.setCapturing(false)
                 lastError = e.message ?: e.toString()
                 val kind = (e as? CameraFailure)?.kind ?: CameraFailure.Kind.RETRY
+                // 強制指定のときは、記録もやり直しもせず、エラーをそのまま出す
+                if (attempts.forced != null) break
                 if (kind == CameraFailure.Kind.RETRY_AND_RECORD) record(config)
                 if (kind == CameraFailure.Kind.FATAL) break
             }
@@ -215,7 +228,7 @@ class CaptureController(
             val early = SystemClock.elapsedRealtime() - r.startedAtMs < RETRY_WINDOW_MS
             Log.w(TAG, "camera stopped (${FailedSetting.of(r.config)}, early=$early): ${failure.message}")
             stopOnControl()
-            if (early && failure.kind != CameraFailure.Kind.FATAL) {
+            if (early && failure.kind != CameraFailure.Kind.FATAL && r.attempts.forced == null) {
                 if (failure.kind == CameraFailure.Kind.RETRY_AND_RECORD) record(r.config)
                 _status.value = CaptureStatus(CaptureStatus.State.STARTING)
                 tryFrom(r.attempts, r.index + 1, failure.message)

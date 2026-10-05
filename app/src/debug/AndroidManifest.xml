@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <!-- 撮影設定の強制指定を adb から操作する（debug 版だけ） -->
+        <receiver
+            android:name=".capture.ForceCaptureReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="jp.co.updates.swingcheck.DEBUG_FORCE_CAPTURE" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

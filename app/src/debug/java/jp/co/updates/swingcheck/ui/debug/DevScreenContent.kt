@@ -10,8 +10,11 @@ import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -19,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,7 +47,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import jp.co.updates.swingcheck.AppContainer
 import jp.co.updates.swingcheck.R
 import jp.co.updates.swingcheck.capture.CameraCapabilitiesReader
+import jp.co.updates.swingcheck.capture.CameraCaps
 import jp.co.updates.swingcheck.capture.CapturePlanner
+import jp.co.updates.swingcheck.capture.CaptureSize
+import jp.co.updates.swingcheck.capture.DebugForcedCapture
+import jp.co.updates.swingcheck.capture.ForcedCapture
+import jp.co.updates.swingcheck.capture.SessionType
 import jp.co.updates.swingcheck.capture.FailedSetting
 import jp.co.updates.swingcheck.settings.FpsMode
 import jp.co.updates.swingcheck.ui.dev.CameraReport
@@ -115,6 +124,7 @@ internal fun DevScreenContent(container: AppContainer, onBack: () -> Unit) {
                 enabled = failedEncoded.isNotEmpty(),
                 onClick = { scope.launch { container.settingsRepository.clearFailedCaptureSettings() } },
             ) { Text(stringResource(R.string.dev_reset_failed)) }
+            ForcedCaptureSection(context)
             SelectionContainer(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text(text ?: stringResource(R.string.dev_loading), fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             }
@@ -223,5 +233,84 @@ private object CameraReportReader {
         CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_SYSTEM_CAMERA -> "SYSTEM_CAMERA"
         CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_OFFLINE_PROCESSING -> "OFFLINE_PROCESSING"
         else -> "UNKNOWN($v)"
+    }
+}
+
+/**
+ * 撮影設定の強制指定。カメラ ID・セッション種別・サイズ・fps を、そのカメラの CameraCharacteristics から読んだ候補の中から選んで保存する。
+ * 焦点距離による除外はしない（超広角も出る）。保存した設定は、次に撮影画面を開いたときから使われる。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ForcedCaptureSection(context: Context) {
+    var cameras by remember { mutableStateOf<List<CameraCaps>>(emptyList()) }
+    var saved by remember { mutableStateOf(DebugForcedCapture.read(context)) }
+    var cameraId by remember { mutableStateOf(saved?.cameraId) }
+    var session by remember { mutableStateOf(saved?.sessionType) }
+    var size by remember { mutableStateOf(saved?.size) }
+    var fps by remember { mutableStateOf(saved?.fps) }
+    LaunchedEffect(Unit) {
+        cameras = withContext(Dispatchers.IO) {
+            runCatching { CameraCapabilitiesReader.readBackCameras(context).map { it.caps } }.getOrDefault(emptyList())
+        }
+    }
+    val caps = cameras.firstOrNull { it.cameraId == cameraId }
+    val sizes = if (caps != null && session != null) ForcedCapture.sizeOptions(caps, session!!) else emptyList()
+    val fpsList = if (caps != null && session != null && size != null) ForcedCapture.fpsOptions(caps, session!!, size!!) else emptyList()
+    val candidate = if (cameraId != null && session != null && size != null && fps != null) ForcedCapture(cameraId!!, session!!, size!!, fps!!) else null
+
+    Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Force capture setting (debug only): ${saved ?: "off (automatic)"}", fontSize = 12.sp)
+        Text("camera", fontSize = 11.sp)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            cameras.forEach { c ->
+                FilterChip(
+                    selected = cameraId == c.cameraId,
+                    onClick = { cameraId = c.cameraId; session = null; size = null; fps = null },
+                    label = { Text("${c.cameraId} (${c.focalLengthMm ?: "?"}mm)") },
+                )
+            }
+        }
+        Text("session", fontSize = 11.sp)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SessionType.entries.forEach { t ->
+                FilterChip(
+                    selected = session == t,
+                    enabled = caps != null && ForcedCapture.sizeOptions(caps, t).isNotEmpty(),
+                    onClick = { session = t; size = null; fps = null },
+                    label = { Text(t.name) },
+                )
+            }
+        }
+        Text("size", fontSize = 11.sp)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            sizes.forEach { s ->
+                FilterChip(selected = size == s, onClick = { size = s; fps = null }, label = { Text(s.toString()) })
+            }
+        }
+        Text("fps", fontSize = 11.sp)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            fpsList.forEach { f ->
+                FilterChip(selected = fps == f, onClick = { fps = f }, label = { Text("$f") })
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                enabled = candidate != null,
+                onClick = {
+                    DebugForcedCapture.write(context, candidate)
+                    saved = candidate
+                    Toast.makeText(context, "saved (applies when the capture screen is opened)", Toast.LENGTH_SHORT).show()
+                },
+            ) { Text("Save") }
+            OutlinedButton(
+                enabled = saved != null,
+                onClick = {
+                    DebugForcedCapture.write(context, null)
+                    saved = null
+                    cameraId = null; session = null; size = null; fps = null
+                },
+            ) { Text("Clear (automatic)") }
+        }
     }
 }

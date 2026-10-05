@@ -74,6 +74,7 @@ fun CaptureScreen(container: AppContainer, onOpenList: () -> Unit, onOpenSetting
     val count by countFlow.collectAsStateWithLifecycle(initialValue = 0)
     val status by controller.status.collectAsStateWithLifecycle()
     val debug by controller.debug.collectAsStateWithLifecycle()
+    val forced by controller.forced.collectAsStateWithLifecycle()
 
     var granted by remember { mutableStateOf(hasCameraPermission(context)) }
     var asked by rememberSaveable { mutableStateOf(false) }
@@ -136,6 +137,9 @@ fun CaptureScreen(container: AppContainer, onOpenList: () -> Unit, onOpenSetting
                     status.state == CaptureStatus.State.ERROR ->
                         OverlayText(stringResource(R.string.capture_error, status.error.orEmpty()))
                     else -> OverlayText(stringResource(R.string.capture_starting))
+                }
+                if (DEBUG_TOOLS_ENABLED && forced != null) {
+                    OverlayText("強制指定中: $forced")
                 }
                 if (DEBUG_TOOLS_ENABLED && info != null) {
                     Text(

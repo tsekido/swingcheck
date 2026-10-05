@@ -128,4 +128,32 @@ class CapturePlannerTest {
         assertNull(FailedSetting.decode("0|BOGUS|60"))
         assertNull(FailedSetting.decode("0|NORMAL|x"))
     }
+
+    @Test
+    fun forcedReturnsOnlyThatSetting() {
+        // 超広角（id2）の 120fps を強制。焦点距離で除外されず、失敗記録があっても除外されず、その 1 件だけ
+        val forced = ForcedCapture("2", SessionType.HIGH_SPEED, fhd, 120)
+        val failed = setOf(FailedSetting("2", SessionType.HIGH_SPEED, 120))
+        val planned = CapturePlanner.plan(zenfone, FpsMode.AUTO, { _, _ -> true }, failed, forced)
+        assertEquals(listOf(CaptureConfig("2", SessionType.HIGH_SPEED, fhd, 120, FpsRange(120, 120))), planned)
+        // 通常セッションの強制
+        val normal = CapturePlanner.plan(zenfone, FpsMode.AUTO, { _, _ -> true }, emptySet(), ForcedCapture("2", SessionType.NORMAL, hd, 60))
+        assertEquals(listOf("2:NORMAL:60"), summary(normal))
+    }
+
+    @Test
+    fun forcedThatTheCameraDoesNotHaveGivesEmpty() {
+        fun planForced(f: ForcedCapture) = CapturePlanner.plan(zenfone, FpsMode.AUTO, { _, _ -> true }, emptySet(), f)
+        assertTrue(planForced(ForcedCapture("9", SessionType.NORMAL, fhd, 30)).isEmpty())
+        assertTrue(planForced(ForcedCapture("0", SessionType.HIGH_SPEED, fhd, 120)).isEmpty()) // id0 は高速撮影なし
+        assertTrue(planForced(ForcedCapture("2", SessionType.HIGH_SPEED, uhd, 120)).isEmpty())
+        assertTrue(planForced(ForcedCapture("2", SessionType.HIGH_SPEED, fhd, 480)).isEmpty())
+    }
+
+    @Test
+    fun forcedOptionsComeFromTheCameraCapabilities() {
+        assertEquals(listOf(fhd, hd), ForcedCapture.sizeOptions(id2, SessionType.HIGH_SPEED))
+        assertEquals(listOf(240, 120), ForcedCapture.fpsOptions(id2, SessionType.HIGH_SPEED, fhd))
+        assertEquals(listOf(60, 30), ForcedCapture.fpsOptions(id2, SessionType.NORMAL, fhd))
+    }
 }

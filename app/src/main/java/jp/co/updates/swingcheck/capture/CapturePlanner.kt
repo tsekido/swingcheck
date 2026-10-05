@@ -30,6 +30,7 @@ data class FailedSetting(val cameraId: String, val sessionType: SessionType, val
  * - 順番は、要求 fps 以下を高い方から（AUTO なら 240 → 120 → 60 → 30）、そのあと要求より上を低い方から。
  *   同じ fps ではカメラ ID の順
  * - 失敗した設定は除外する
+ * - 強制指定（debug 版だけ）があるときは、その設定 1 件だけ（指定のカメラ・サイズ・fps がなければ空）
  */
 object CapturePlanner {
     /** 焦点距離を「同じ」とみなす相対的な許容差。 */
@@ -50,7 +51,10 @@ object CapturePlanner {
         mode: FpsMode,
         encoderSupports: (CaptureSize, Int) -> Boolean,
         failed: Set<FailedSetting>,
+        forced: ForcedCapture? = null,
     ): List<CaptureConfig> {
+        // 強制指定（debug 版だけ）：その設定 1 件だけ。カメラの絞り込みも失敗記録の除外もしない
+        if (forced != null) return listOfNotNull(forced.toConfig(cameras))
         val all = candidates(cameras, mode, encoderSupports)
         val kept = all.filter { FailedSetting.of(it) !in failed }
         return kept.ifEmpty { all }
