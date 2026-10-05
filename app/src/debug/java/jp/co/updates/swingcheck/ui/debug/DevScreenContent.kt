@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -29,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -41,12 +43,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import jp.co.updates.swingcheck.AppContainer
 import jp.co.updates.swingcheck.R
 import jp.co.updates.swingcheck.capture.CameraCapabilitiesReader
-import jp.co.updates.swingcheck.capture.CaptureConfigSelector
+import jp.co.updates.swingcheck.capture.CapturePlanner
+import jp.co.updates.swingcheck.capture.FailedSetting
 import jp.co.updates.swingcheck.settings.FpsMode
 import jp.co.updates.swingcheck.ui.dev.CameraReport
 import jp.co.updates.swingcheck.ui.dev.DeviceReport
 import jp.co.updates.swingcheck.ui.dev.HighSpeedSize
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,20 +59,25 @@ internal fun DevScreenContent(container: AppContainer, onBack: () -> Unit) {
     val context = LocalContext.current
     var cameraText by remember { mutableStateOf<String?>(null) }
     var selectionText by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
+    val scope = rememberCoroutineScope()
+    val failedEncoded by container.settingsRepository.failedCaptureSettings.collectAsStateWithLifecycle(initialValue = emptySet())
+    LaunchedEffect(failedEncoded) {
         cameraText = withContext(Dispatchers.IO) {
             runCatching { CameraReportReader.read(context).toText() }
                 .getOrElse { "failed to read camera characteristics: $it" }
         }
         val mode = container.settingsRepository.current().fpsMode
         selectionText = withContext(Dispatchers.IO) {
-            runCatching { selectionReport(context, mode) }.getOrElse { "failed to select capture config: $it" }
+            runCatching { selectionReport(context, mode, failedEncoded.mapNotNull(FailedSetting::decode).toSet()) }.getOrElse { "failed to select capture config: $it" }
         }
     }
     val lastInfo by container.captureController.lastInfo.collectAsStateWithLifecycle()
     val debug by container.captureController.debug.collectAsStateWithLifecycle()
     // 撮影画面で最後に動いた設定（撮影画面を一度も開いていなければ空）
     val text = if (cameraText == null || selectionText == null) null else buildString {
+        appendLine("== failed capture settings (excluded from selection) ==")
+        if (failedEncoded.isEmpty()) appendLine("(none)") else failedEncoded.sorted().forEach { appendLine(FailedSetting.decode(it)?.toString() ?: it) }
+        appendLine()
         appendLine("== capture pipeline (selected for fpsMode, per back camera) ==")
         appendLine(selectionText)
         appendLine("== capture pipeline (last run on the capture screen) ==")
@@ -102,6 +111,10 @@ internal fun DevScreenContent(container: AppContainer, onBack: () -> Unit) {
                     Toast.makeText(context, R.string.dev_copied, Toast.LENGTH_SHORT).show()
                 },
             ) { Text(stringResource(R.string.dev_copy)) }
+            OutlinedButton(
+                enabled = failedEncoded.isNotEmpty(),
+                onClick = { scope.launch { container.settingsRepository.clearFailedCaptureSettings() } },
+            ) { Text(stringResource(R.string.dev_reset_failed)) }
             SelectionContainer(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text(text ?: stringResource(R.string.dev_loading), fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             }
@@ -109,18 +122,25 @@ internal fun DevScreenContent(container: AppContainer, onBack: () -> Unit) {
     }
 }
 
-/** 設定の fpsMode で、背面カメラごとに実際に選ばれる撮影設定（カメラは開かない）。 */
-private fun selectionReport(context: Context, mode: FpsMode): String {
+/** 設定の fpsMode での撮影設定の選び方（カメラは開かない）：メインカメラの候補と、試す順番。 */
+private fun selectionReport(context: Context, mode: FpsMode, failed: Set<FailedSetting>): String {
     val cameras = CameraCapabilitiesReader.readBackCameras(context)
     if (cameras.isEmpty()) return "(no back cameras)"
+    val caps = cameras.map { it.caps }
+    val main = CapturePlanner.mainCameras(caps).map { it.cameraId }
+    val plan = CapturePlanner.plan(caps, mode, CameraCapabilitiesReader::encoderSupports, failed)
     return buildString {
         appendLine("fpsMode: $mode")
         for (camera in cameras) {
-            val config = CaptureConfigSelector.select(
-                camera.caps, mode, CameraCapabilitiesReader::encoderSupports,
-            )
-            append("camera ${camera.caps.cameraId}: ")
-            appendLine(config?.let { "${it.sessionType} ${it.size} ${it.fps}fps AE ${it.fpsRange}" } ?: "(none)")
+            val c = camera.caps
+            val role = if (c.cameraId in main) "main" else "excluded (focal length differs)"
+            val physical = if (c.physicalIds.isEmpty()) "" else ", physical ${c.physicalIds.joinToString(",")}"
+            appendLine("camera ${c.cameraId}: focal ${c.focalLengthMm ?: "?"}mm$physical -> $role")
+        }
+        appendLine("attempt order (failed settings excluded):")
+        if (plan.isEmpty()) appendLine("  (none)")
+        plan.forEachIndexed { i, it ->
+            appendLine("  ${i + 1}. camera ${it.cameraId}: ${it.sessionType} ${it.size} ${it.fps}fps AE ${it.fpsRange}")
         }
         CameraCapabilitiesReader.findEncoder()?.let { appendLine("encoder: ${it.name}") }
     }
@@ -150,7 +170,8 @@ private object CameraReportReader {
                 highSpeedSizes = highSpeed,
                 aeFpsRanges = ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
                     ?.map { it.lower to it.upper }.orEmpty(),
-                physicalIds = ch.physicalCameraIds.sorted(),
+                physicalIds = ch.physicalCameraIds.sorted().map { pid -> "$pid${physicalFocalText(manager, pid)}" },
+                focalLengths = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.toList().orEmpty(),
             )
         }
         return DeviceReport(
@@ -158,6 +179,14 @@ private object CameraReportReader {
             androidVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
             cameras = cameras,
         )
+    }
+
+    /** 物理カメラの焦点距離（読めなければ空文字）。物理カメラはアプリから見えないことがある。 */
+    private fun physicalFocalText(manager: CameraManager, id: String): String = try {
+        manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+            ?.firstOrNull()?.let { " (${it}mm)" }.orEmpty()
+    } catch (e: Exception) {
+        " (not accessible)"
     }
 
     private fun facingName(v: Int?): String = when (v) {

@@ -3,6 +3,7 @@ package jp.co.updates.swingcheck.capture
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import androidx.core.content.ContextCompat
@@ -22,6 +23,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -126,6 +128,14 @@ class CaptureController(
         }
     }
 
+    /** 設定を試す順番と、試すのに必要なもの。やり直しのときに使い回す。 */
+    private class Attempts(
+        val previewSurface: Surface,
+        val displayRotationDegrees: Int,
+        val configs: List<CaptureConfig>,
+        val sensorOrientations: Map<String, Int>,
+    )
+
     private fun startOnControl(previewSurface: Surface, displayRotationDegrees: Int) {
         run?.let {
             if (it.previewSurface === previewSurface) return
@@ -136,19 +146,54 @@ class CaptureController(
             return
         }
         _status.value = CaptureStatus(CaptureStatus.State.STARTING)
-        val r = Run(previewSurface)
-        run = r
-        try {
-            r.start(displayRotationDegrees)
-            gate.setCapturing(true)
-            _lastInfo.value = r.info
-            _status.value = CaptureStatus(CaptureStatus.State.RUNNING, r.info)
+        val attempts = try {
+            val mode = runBlocking { settings.current().fpsMode }
+            val failed = runBlocking { settings.failedCaptureSettings.first() }.mapNotNull(FailedSetting::decode).toSet()
+            val cameras = CameraCapabilitiesReader.readBackCameras(context)
+            val configs = CapturePlanner.plan(cameras.map { it.caps }, mode, CameraCapabilitiesReader::encoderSupports, failed)
+            if (configs.isEmpty()) error("no supported capture configuration (back cameras: ${cameras.size})")
+            Attempts(previewSurface, displayRotationDegrees, configs, cameras.associate { it.caps.cameraId to it.sensorOrientation })
         } catch (e: Throwable) {
             Log.e(TAG, "start failed", e)
-            r.stop()
-            run = null
-            gate.setCapturing(false)
             _status.value = CaptureStatus(CaptureStatus.State.ERROR, error = e.message ?: e.toString())
+            return
+        }
+        tryFrom(attempts, 0)
+    }
+
+    /** [from] 番目の設定から順に、動くものが見つかるまで試す。すべて失敗したらエラーにする。 */
+    private fun tryFrom(attempts: Attempts, from: Int, previousError: String? = null) {
+        var lastError = previousError ?: "no supported capture configuration"
+        for (index in from until attempts.configs.size) {
+            val config = attempts.configs[index]
+            val r = Run(attempts, index, config)
+            run = r
+            try {
+                r.start()
+                gate.setCapturing(true)
+                _lastInfo.value = r.info
+                _status.value = CaptureStatus(CaptureStatus.State.RUNNING, r.info)
+                return
+            } catch (e: Throwable) {
+                Log.e(TAG, "start failed (${FailedSetting.of(config)})", e)
+                r.stop()
+                run = null
+                gate.setCapturing(false)
+                lastError = e.message ?: e.toString()
+                val kind = (e as? CameraFailure)?.kind ?: CameraFailure.Kind.RETRY
+                if (kind == CameraFailure.Kind.RETRY_AND_RECORD) record(config)
+                if (kind == CameraFailure.Kind.FATAL) break
+            }
+        }
+        _status.value = CaptureStatus(CaptureStatus.State.ERROR, error = lastError)
+    }
+
+    /** 失敗した設定を覚えて、次回からの選択で外す。 */
+    private fun record(config: CaptureConfig) {
+        try {
+            runBlocking { settings.addFailedCaptureSetting(FailedSetting.of(config).encode()) }
+        } catch (e: Exception) {
+            Log.w(TAG, "cannot record the failed setting", e)
         }
     }
 
@@ -160,17 +205,34 @@ class CaptureController(
         _status.value = CaptureStatus()
     }
 
-    /** カメラが止まった（切断など）。制御スレッドで止めてエラーにする。 */
-    private fun onCameraFailure(r: Run, message: String) {
+    /**
+     * カメラが止まった（切断など）。制御スレッドで止める。始めてすぐ（[RETRY_WINDOW_MS] 以内）なら
+     * 次の設定でやり直し、それ以外はエラーにする。
+     */
+    private fun onCameraFailure(r: Run, failure: CameraFailure) {
         control.execute {
             if (run !== r) return@execute
+            val early = SystemClock.elapsedRealtime() - r.startedAtMs < RETRY_WINDOW_MS
+            Log.w(TAG, "camera stopped (${FailedSetting.of(r.config)}, early=$early): ${failure.message}")
             stopOnControl()
-            _status.value = CaptureStatus(CaptureStatus.State.ERROR, error = message)
+            if (early && failure.kind != CameraFailure.Kind.FATAL) {
+                if (failure.kind == CameraFailure.Kind.RETRY_AND_RECORD) record(r.config)
+                _status.value = CaptureStatus(CaptureStatus.State.STARTING)
+                tryFrom(r.attempts, r.index + 1, failure.message)
+            } else {
+                _status.value = CaptureStatus(CaptureStatus.State.ERROR, error = failure.message)
+            }
         }
     }
 
     /** 1 回の撮影の間だけ生きるものをまとめたもの。 */
-    private inner class Run(val previewSurface: Surface) {
+    private inner class Run(val attempts: Attempts, val index: Int, val config: CaptureConfig) {
+        val previewSurface: Surface get() = attempts.previewSurface
+
+        /** 撮影が始まった時刻（elapsedRealtime）。始めてすぐの失敗かどうかを見る */
+        var startedAtMs = 0L
+            private set
+
         private val buffer = SampleRingBuffer(RING_DURATION_US, RING_MAX_BYTES)
         private val origin = TimeOrigin()
         private val coordinator = ClipCoordinator(buffer, origin)
@@ -193,32 +255,30 @@ class CaptureController(
         @Volatile
         private var stopped = false
 
-        fun start(displayRotationDegrees: Int) {
-            val mode = runBlocking { settings.current().fpsMode }
-            val cameras = CameraCapabilitiesReader.readBackCameras(context)
-            val (camera0, config) = CameraCapabilitiesReader.chooseBest(cameras, mode, CameraCapabilitiesReader::encoderSupports)
-                ?: error("no supported capture configuration (back cameras: ${cameras.size})")
+        fun start() {
+            val sensorOrientation = attempts.sensorOrientations[config.cameraId] ?: 90
             val codecInfo = CameraCapabilitiesReader.findEncoder() ?: error("no H.264 encoder")
-            val rotation = CaptureOrientation.rotationHint(camera0.sensorOrientation, displayRotationDegrees)
+            val rotation = CaptureOrientation.rotationHint(sensorOrientation, attempts.displayRotationDegrees)
             val display = CaptureOrientation.displaySize(config.size, rotation)
             val (pw, ph) = YuvConverter.scaledSize(display.width, display.height, POSE_LONG_SIDE)
             val poseSize = CaptureSize(pw, ph)
 
             val enc = VideoEncoder(codecInfo, config.size, config.fps, buffer, origin) { export(coordinator.onSampleAdded()) }
             encoder = enc
-            info = CaptureInfo(config, enc.codecName, enc.bitrate, camera0.sensorOrientation, rotation, poseSize)
+            info = CaptureInfo(config, enc.codecName, enc.bitrate, sensorOrientation, rotation, poseSize)
 
             val detector = SwingDetector(width = pw, height = ph)
             val inf = PoseInference(estimatorFactory, detector) { clip -> onClip(clip) }
             inference = inf
 
             enc.start()
-            val g = GlPipeline(previewSurface, config.size, rotation, poseSize, origin, inf)
+            val g = GlPipeline(attempts.previewSurface, config.size, rotation, poseSize, origin, inf)
             gl = g
             val cameraSurface = g.start()
             val cam = CameraController(context, config, listOf(enc.inputSurface, cameraSurface)) { onCameraFailure(this, it) }
             camera = cam
             cam.open()
+            startedAtMs = SystemClock.elapsedRealtime()
 
             ticker = Executors.newSingleThreadScheduledExecutor { Thread(it, "swingcheck-capture-stats") }.also {
                 it.scheduleWithFixedDelay(::publishDebug, 500, 500, TimeUnit.MILLISECONDS)
@@ -249,7 +309,6 @@ class CaptureController(
         private fun export(selections: List<ClipSelection>) {
             if (selections.isEmpty()) return
             val format = encoder?.outputFormat ?: return
-            val config = info.config
             val rotation = info.rotationHint
             for (selection in selections) {
                 scope.launch(exportDispatcher) {
@@ -299,6 +358,9 @@ class CaptureController(
 
     companion object {
         private const val TAG = "CaptureController"
+
+        /** 撮影を始めてからこの時間以内に止まったら、設定のせいとみなして次の設定でやり直す。 */
+        private const val RETRY_WINDOW_MS = 5_000L
 
         /** design.md 8章：リングバッファの長さは 6 秒。 */
         const val RING_DURATION_US = 6_000_000L

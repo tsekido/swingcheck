@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -46,10 +47,22 @@ class SettingsRepository(
         dataStore.edit { it[PRACTICE_FILTER_ENABLED] = enabled }
     }
 
+    /** 撮影で失敗した設定（[jp.co.updates.swingcheck.capture.FailedSetting.encode] の文字列）。 */
+    val failedCaptureSettings: Flow<Set<String>> = dataStore.data.map { it[FAILED_CAPTURE_SETTINGS].orEmpty() }
+
+    suspend fun addFailedCaptureSetting(encoded: String) {
+        dataStore.edit { it[FAILED_CAPTURE_SETTINGS] = it[FAILED_CAPTURE_SETTINGS].orEmpty() + encoded }
+    }
+
+    suspend fun clearFailedCaptureSettings() {
+        dataStore.edit { it.remove(FAILED_CAPTURE_SETTINGS) }
+    }
+
     private companion object {
         val FPS_MODE = stringPreferencesKey("fpsMode")
         val DEFAULT_HEIGHT_CM = floatPreferencesKey("defaultHeightCm")
         val LENGTH_UNIT = stringPreferencesKey("lengthUnit")
         val PRACTICE_FILTER_ENABLED = booleanPreferencesKey("practiceFilterEnabled")
+        val FAILED_CAPTURE_SETTINGS = stringSetPreferencesKey("failedCaptureSettings")
     }
 }

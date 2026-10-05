@@ -9,7 +9,6 @@ import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.media.MediaRecorder
-import jp.co.updates.swingcheck.settings.FpsMode
 
 /** 背面カメラ 1 台の、撮影に必要な情報（[CameraCaps] ＋ 向き）。 */
 data class BackCamera(val caps: CameraCaps, val sensorOrientation: Int)
@@ -44,7 +43,11 @@ object CameraCapabilitiesReader {
             val aeRanges = ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
                 ?.map { FpsRange(it.lower, it.upper) }.orEmpty()
             BackCamera(
-                CameraCaps(id, highSpeed, normal, aeRanges),
+                CameraCaps(
+                    id, highSpeed, normal, aeRanges,
+                    focalLengthMm = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull(),
+                    physicalIds = ch.physicalCameraIds.sorted(),
+                ),
                 ch.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90,
             )
         }
@@ -55,20 +58,6 @@ object CameraCapabilitiesReader {
         val known = minDurationsNs.filter { it > 0 }
         if (known.isEmpty()) return null
         return (1_000_000_000L / known.max()).toInt()
-    }
-
-    /** 全カメラの中で、設定で選ばれる設定がいちばん fps の高いもの（同じなら ID が先のもの）。 */
-    fun chooseBest(
-        cameras: List<BackCamera>,
-        mode: FpsMode,
-        encoderSupports: (CaptureSize, Int) -> Boolean,
-    ): Pair<BackCamera, CaptureConfig>? {
-        var best: Pair<BackCamera, CaptureConfig>? = null
-        for (camera in cameras) {
-            val config = CaptureConfigSelector.select(camera.caps, mode, encoderSupports) ?: continue
-            if (best == null || config.fps > best.second.fps) best = camera to config
-        }
-        return best
     }
 
     /** H.264 エンコーダーがそのサイズ・fps に対応しているか。 */

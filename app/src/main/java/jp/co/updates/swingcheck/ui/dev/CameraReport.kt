@@ -15,7 +15,10 @@ data class CameraReport(
     val highSpeedSizes: List<HighSpeedSize>,
     /** CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES（通常のセッション） */
     val aeFpsRanges: List<Pair<Int, Int>>,
+    /** 論理カメラが束ねる物理カメラの ID。焦点距離が読めたものは「4 (5.53mm)」の形 */
     val physicalIds: List<String>,
+    /** LENS_INFO_AVAILABLE_FOCAL_LENGTHS（mm） */
+    val focalLengths: List<Float> = emptyList(),
 )
 
 data class DeviceReport(
@@ -34,6 +37,7 @@ data class DeviceReport(
             appendLine("  INFO_SUPPORTED_HARDWARE_LEVEL: ${c.hardwareLevel}")
             appendLine("  REQUEST_AVAILABLE_CAPABILITIES: ${c.capabilities.joinToString(", ").ifEmpty { "(none)" }}")
             appendLine("  CONSTRAINED_HIGH_SPEED_VIDEO: ${if (c.supportsConstrainedHighSpeed) "yes" else "no"}")
+            appendLine("  LENS_INFO_AVAILABLE_FOCAL_LENGTHS: ${c.focalLengths.joinToString(", ") { "${it}mm" }.ifEmpty { "(unknown)" }}")
             if (c.physicalIds.isNotEmpty()) appendLine("  physical camera ids: ${c.physicalIds.joinToString(", ")}")
             appendLine("  CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES: ${c.aeFpsRanges.joinToString(", ") { rangeText(it) }.ifEmpty { "(none)" }}")
             if (c.highSpeedSizes.isEmpty()) {

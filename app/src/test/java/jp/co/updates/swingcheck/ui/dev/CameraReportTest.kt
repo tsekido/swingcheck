@@ -16,8 +16,9 @@ class CameraReportTest {
                     highSpeedSizes = listOf(HighSpeedSize(1920, 1080, listOf(120 to 120, 240 to 240))),
                     aeFpsRanges = listOf(15 to 30, 30 to 30),
                     physicalIds = emptyList(),
+                    focalLengths = listOf(5.53f),
                 ),
-                CameraReport("1", "FRONT", "FULL", emptyList(), false, emptyList(), emptyList(), listOf("2", "3")),
+                CameraReport("1", "FRONT", "FULL", emptyList(), false, emptyList(), emptyList(), listOf("2 (2.75mm)", "3")),
             ),
         )
         val t = report.toText()
@@ -29,6 +30,8 @@ class CameraReportTest {
         assertTrue(t.contains("camera 1 (FRONT)"), t)
         assertTrue(t.contains("CONSTRAINED_HIGH_SPEED_VIDEO: no"), t)
         assertTrue(t.contains("high speed video sizes: (none)"), t)
-        assertTrue(t.contains("physical camera ids: 2, 3"), t)
+        assertTrue(t.contains("physical camera ids: 2 (2.75mm), 3"), t)
+        assertTrue(t.contains("LENS_INFO_AVAILABLE_FOCAL_LENGTHS: 5.53mm"), t)
+        assertTrue(t.contains("LENS_INFO_AVAILABLE_FOCAL_LENGTHS: (unknown)"), t)
     }
 }

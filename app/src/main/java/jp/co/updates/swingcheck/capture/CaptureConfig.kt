@@ -23,12 +23,16 @@ data class NormalSize(val size: CaptureSize, val maxFps: Int?)
  * @param highSpeedSizes 高速撮影のサイズごとの fps の範囲。高速撮影に対応していなければ空
  * @param normalSizes SurfaceTexture とエンコーダーの両方に出せるサイズ
  * @param normalFpsRanges CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES
+ * @param focalLengthMm LENS_INFO_AVAILABLE_FOCAL_LENGTHS の先頭（不明なら null）。メインカメラかどうかの判定に使う
+ * @param physicalIds 論理カメラが束ねている物理カメラの ID（なければ空。表示用）
  */
 data class CameraCaps(
     val cameraId: String,
     val highSpeedSizes: Map<CaptureSize, List<FpsRange>>,
     val normalSizes: List<NormalSize>,
     val normalFpsRanges: List<FpsRange>,
+    val focalLengthMm: Float? = null,
+    val physicalIds: List<String> = emptyList(),
 )
 
 /** 実際に使うことにした撮影の設定。 */
@@ -72,7 +76,7 @@ object CaptureConfigSelector {
         return candidates.filter { it.fps == fps }.let(::pickBySize)
     }
 
-    private fun pickBySize(list: List<CaptureConfig>): CaptureConfig {
+    internal fun pickBySize(list: List<CaptureConfig>): CaptureConfig {
         for (preferred in PREFERRED_SIZES) {
             list.firstOrNull { it.size == preferred }?.let { return it }
         }
