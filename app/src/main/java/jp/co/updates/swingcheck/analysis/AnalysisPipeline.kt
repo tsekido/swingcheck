@@ -55,12 +55,44 @@ class AnalysisPipeline(
         }
     }
 
+    /** 解析の時間の内訳（ミリ秒）。ログ用。 */
+    private class Timing {
+        var poseMs = 0L
+        var frames = 0
+    }
+
     private suspend fun analyze(swing: SwingEntity) {
+        val start = System.nanoTime()
+        val timing = Timing()
+        var estimateMs = 0L
+        var outcome = "ok"
+        try {
+            analyze(swing, timing) { estimateMs = it }
+        } catch (e: Throwable) {
+            outcome = if (e is CancellationException) "cancelled" else "failed(${e.javaClass.simpleName})"
+            throw e
+        } finally {
+            val totalMs = (System.nanoTime() - start) / 1_000_000
+            // 読み込み＋骨格推定の合計から骨格推定を引いたものがデコード（と色変換）の時間
+            Log.i(
+                TAG,
+                "timing swing=${swing.id} result=$outcome frames=${timing.frames} " +
+                    "decode_ms=${estimateMs - timing.poseMs} pose_ms=${timing.poseMs} total_ms=$totalMs",
+            )
+        }
+    }
+
+    private suspend fun analyze(swing: SwingEntity, timing: Timing, onEstimated: (Long) -> Unit) {
         val reader = VideoFrameReader(files.resolve(swing.videoPath))
         val info = reader.probe()
 
         // 1. 全コマ読み → 骨格推定
-        val (frames, size) = estimateAll(reader, info)
+        val estimateStart = System.nanoTime()
+        val (frames, size) = try {
+            estimateAll(reader, info, timing)
+        } finally {
+            onEstimated((System.nanoTime() - estimateStart) / 1_000_000)
+        }
         if (frames.none { it.second }) error("no person detected in any frame")
         val poseFrames = frames.map { it.first }
 
@@ -94,6 +126,7 @@ class AnalysisPipeline(
     private suspend fun estimateAll(
         reader: VideoFrameReader,
         info: VideoInfo,
+        timing: Timing,
     ): Pair<List<Pair<PoseFrame, Boolean>>, Pair<Int, Int>> = withContext(Dispatchers.Default) {
         val out = ArrayList<Pair<PoseFrame, Boolean>>(info.frameCount)
         var size = info.width to info.height
@@ -104,6 +137,7 @@ class AnalysisPipeline(
                 val ts = Timestamps.nextAfter(lastTs, frame.timestampMs)
                 lastTs = ts
                 // 骨格の座標は正規化座標なので、縮小しても結果の意味は変わらない。保存する動画の大きさは元のまま
+                val poseStart = System.nanoTime()
                 val bitmap = frame.toBitmap(POSE_INPUT_MAX_LONG_SIDE)
                 try {
                     if (out.isEmpty()) size = frame.displaySize()
@@ -111,6 +145,8 @@ class AnalysisPipeline(
                     out += if (pose != null) pose to true else PoseFrames.undetected(ts) to false
                 } finally {
                     bitmap.recycle()
+                    timing.poseMs += (System.nanoTime() - poseStart) / 1_000_000
+                    timing.frames++
                 }
                 true
             }

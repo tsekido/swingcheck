@@ -12,6 +12,15 @@
                 <action android:name="jp.co.updates.swingcheck.DEBUG_FORCE_CAPTURE" />
             </intent-filter>
         </receiver>
+        <!-- 動画ファイルの取り込みを adb から行う（debug 版だけ） -->
+        <receiver
+            android:name=".DebugImportReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="jp.co.updates.swingcheck.DEBUG_IMPORT" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

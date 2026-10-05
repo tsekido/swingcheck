@@ -1,19 +1,14 @@
 package jp.co.updates.swingcheck.video
 
 import android.graphics.Bitmap
-import android.graphics.ImageFormat
 import android.media.Image
-import android.media.ImageReader
 import android.media.MediaCodec
+import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
-import android.os.Handler
-import android.os.HandlerThread
 import jp.co.updates.swingcheck.core.GrayImage
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.Semaphore
-import java.util.concurrent.TimeUnit
 
 /**
  * 動画の情報。width／height は回転メタデータを反映した、表示する向きの大きさ。
@@ -67,7 +62,8 @@ class DecodedFrame internal constructor(
 }
 
 /**
- * MP4 から全コマを順に取り出す。MediaCodec でデコードし、ImageReader（YUV_420_888）で受け取る。
+ * MP4 から全コマを順に取り出す。MediaCodec を ByteBuffer 出力でデコードし、getOutputImage（YUV_420_888）で受け取る。
+ * Surface＋ImageReader だと、Qualcomm のデコーダーが CPU で読めない形式（UBWC など）で出して getPlanes が落ちるため。
  * 時刻の昇順（表示順）に出てくる。
  */
 class VideoFrameReader(private val file: File) {
@@ -118,8 +114,6 @@ class VideoFrameReader(private val file: File) {
     fun decode(info: VideoInfo = probe(), onFrame: (DecodedFrame) -> Boolean): Int {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
-        var reader: ImageReader? = null
-        val thread = HandlerThread("VideoFrameReader").also { it.start() }
         try {
             extractor.setDataSource(file.path)
             val track = findVideoTrack(extractor)
@@ -129,12 +123,9 @@ class VideoFrameReader(private val file: File) {
 
             val codedWidth = format.getInteger(MediaFormat.KEY_WIDTH)
             val codedHeight = format.getInteger(MediaFormat.KEY_HEIGHT)
-            val available = Semaphore(0)
-            reader = ImageReader.newInstance(codedWidth, codedHeight, ImageFormat.YUV_420_888, MAX_IMAGES).also {
-                it.setOnImageAvailableListener({ available.release() }, Handler(thread.looper))
-            }
+            format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
             codec = MediaCodec.createDecoderByType(mime).also {
-                it.configure(format, reader.surface, null, 0)
+                it.configure(format, null, null, 0)
                 it.start()
             }
 
@@ -165,13 +156,10 @@ class VideoFrameReader(private val file: File) {
                         color = colorOf(codec.outputFormat, codedWidth, codedHeight)
                     outIndex >= 0 -> {
                         val isFrame = bufferInfo.size > 0
-                        codec.releaseOutputBuffer(outIndex, isFrame)
-                        if (isFrame) {
-                            if (!available.tryAcquire(FRAME_TIMEOUT_SEC, TimeUnit.SECONDS)) {
-                                throw IOException("decoder did not deliver a frame: $file")
-                            }
-                            val image = reader.acquireNextImage() ?: throw IOException("no image: $file")
-                            try {
+                        try {
+                            if (isFrame) {
+                                // 出力バッファの Image は releaseOutputBuffer までが有効。onFrame の中でだけ使わせる
+                                val image = codec.getOutputImage(outIndex) ?: throw IOException("no output image: $file")
                                 val frame = DecodedFrame(
                                     index,
                                     (bufferInfo.presentationTimeUs - info.firstTimestampUs) / 1000,
@@ -180,9 +168,9 @@ class VideoFrameReader(private val file: File) {
                                 ) { copyOf(image) }
                                 index++
                                 if (!onFrame(frame)) return index
-                            } finally {
-                                image.close()
                             }
+                        } finally {
+                            codec.releaseOutputBuffer(outIndex, false)
                         }
                         if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
                     }
@@ -192,9 +180,7 @@ class VideoFrameReader(private val file: File) {
         } finally {
             runCatching { codec?.stop() }
             runCatching { codec?.release() }
-            reader?.close()
             extractor.release()
-            thread.quitSafely()
         }
     }
 
@@ -219,7 +205,11 @@ class VideoFrameReader(private val file: File) {
 
     private fun copyOf(image: Image): YuvFrame {
         val crop = image.cropRect
-        val planes = image.planes
+        val planes = try {
+            image.planes
+        } catch (e: RuntimeException) {
+            throw IOException("cannot read decoded image planes: $file", e)
+        }
         fun bytes(p: Image.Plane): ByteArray {
             val b = p.buffer.duplicate()
             return ByteArray(b.remaining()).also { b.get(it) }
@@ -241,7 +231,5 @@ class VideoFrameReader(private val file: File) {
 
     private companion object {
         const val TIMEOUT_US = 10_000L
-        const val FRAME_TIMEOUT_SEC = 5L
-        const val MAX_IMAGES = 3
     }
 }
