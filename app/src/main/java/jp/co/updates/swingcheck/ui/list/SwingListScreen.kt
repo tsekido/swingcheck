@@ -1,6 +1,9 @@
 package jp.co.updates.swingcheck.ui.list
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -52,15 +57,13 @@ import jp.co.updates.swingcheck.data.AnalysisStatus
 import jp.co.updates.swingcheck.data.SwingEntity
 import jp.co.updates.swingcheck.ui.common.BackButton
 import jp.co.updates.swingcheck.ui.common.rememberSwingDateFormat
-import jp.co.updates.swingcheck.ui.debug.DEBUG_TOOLS_ENABLED
-import jp.co.updates.swingcheck.ui.debug.rememberVideoImportLauncher
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SwingListScreen(container: AppContainer, onBack: () -> Unit, onOpenSwing: (Long) -> Unit) {
     val vm: SwingListViewModel = viewModel(
-        factory = viewModelFactory { initializer { SwingListViewModel(container.swingRepository) } },
+        factory = viewModelFactory { initializer { SwingListViewModel(container.swingRepository, container.videoImporter) } },
     )
     val swings by vm.swings.collectAsStateWithLifecycle()
     val selected by vm.selected.collectAsStateWithLifecycle()
@@ -68,21 +71,33 @@ fun SwingListScreen(container: AppContainer, onBack: () -> Unit, onOpenSwing: (L
     val dateFormat = rememberSwingDateFormat()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val resources = LocalResources.current
     var confirmDelete by remember { mutableStateOf(false) }
-    var importing by remember { mutableStateOf(false) }
+    val importing by vm.importing.collectAsStateWithLifecycle()
 
     BackHandler(enabled = selecting) { vm.clearSelection() }
 
     val notReadyMessage = stringResource(R.string.list_not_ready)
+    val importedMessage = stringResource(R.string.list_import_done)
+    val importedStretchedMessage = stringResource(R.string.list_import_done_stretched)
     val importFailedMessage = stringResource(R.string.list_import_failed)
-    val importVideo = rememberVideoImportLauncher(
-        container.videoImporter,
-        onStarted = { importing = true },
-        onFinished = { ok ->
-            importing = false
-            if (!ok) scope.launch { snackbar.showSnackbar(importFailedMessage) }
-        },
-    )
+    val importTooLongMessage = { maxSec: Int -> resources.getString(R.string.list_import_too_long, maxSec) }
+    LaunchedEffect(vm) {
+        vm.events.collect { event ->
+            snackbar.currentSnackbarData?.dismiss()
+            snackbar.showSnackbar(
+                when (event) {
+                    is ImportEvent.Imported -> if (event.stretched) importedStretchedMessage else importedMessage
+                    is ImportEvent.TooLong -> importTooLongMessage(event.maxSec)
+                    ImportEvent.Failed -> importFailedMessage
+                },
+            )
+        }
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) vm.importVideo(uri)
+    }
+    val importVideo = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
 
     Scaffold(
         topBar = {
@@ -114,7 +129,7 @@ fun SwingListScreen(container: AppContainer, onBack: () -> Unit, onOpenSwing: (L
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (DEBUG_TOOLS_ENABLED && !selecting) {
+            if (!selecting) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,

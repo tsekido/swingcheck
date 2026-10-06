@@ -102,6 +102,11 @@ android {
         noCompress += "task"
     }
 
+    // マイグレーションのテスト（androidTest）が、各版のスキーマの JSON を読めるようにする
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     testOptions {
         unitTests.all { it.useJUnitPlatform() }
     }

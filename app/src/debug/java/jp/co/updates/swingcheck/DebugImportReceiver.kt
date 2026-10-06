@@ -36,8 +36,10 @@ class DebugImportReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val id = container.videoImporter.import(Uri.fromFile(file))
-                Log.i(TAG, "imported: swing=$id path=$path")
+                when (val r = container.videoImporter.import(Uri.fromFile(file))) {
+                    is ImportResult.Success -> Log.i(TAG, "imported: swing=${r.swingId} stretched=${r.stretched} path=$path")
+                    is ImportResult.TooLong -> Log.w(TAG, "rejected (too long: ${r.durationSec}s): $path")
+                }
             } catch (e: Throwable) {
                 Log.e(TAG, "import failed: $path", e)
             } finally {

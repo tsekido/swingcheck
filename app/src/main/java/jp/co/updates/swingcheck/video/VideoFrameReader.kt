@@ -6,6 +6,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.media.MediaMetadataRetriever
 import jp.co.updates.swingcheck.core.GrayImage
 import java.io.File
 import java.io.IOException
@@ -23,6 +24,8 @@ data class VideoInfo(
     val frameCount: Int,
     val durationUs: Long,
     val firstTimestampUs: Long,
+    /** 動画のメタデータ（com.android.capture.fps）にある撮影時の fps。スロー動画などにある。なければ null。 */
+    val captureFps: Float? = null,
 )
 
 /** デコードした 1 コマ。変換は呼ばれたときだけ行う（不要なコマの変換を省くため）。 */
@@ -100,9 +103,23 @@ class VideoFrameReader(private val file: File) {
             }
             // 最後のコマは 1 コマ分の長さを足して、動画の長さとする
             val frameDurationUs = if (count >= 2) span / (count - 1) else 0L
-            return VideoInfo(w, h, rotation, fps, count, span + frameDurationUs, first)
+            return VideoInfo(w, h, rotation, fps, count, span + frameDurationUs, first, readCaptureFps())
         } finally {
             extractor.release()
+        }
+    }
+
+    /** メタデータの撮影時の fps（スロー動画などにある）。読めなければ null。 */
+    private fun readCaptureFps(): Float? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.path)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+                ?.toFloatOrNull()?.takeIf { it > 0f && it.isFinite() }
+        } catch (e: RuntimeException) {
+            null
+        } finally {
+            runCatching { retriever.release() }
         }
     }
 

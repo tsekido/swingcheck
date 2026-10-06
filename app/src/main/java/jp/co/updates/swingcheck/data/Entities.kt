@@ -1,5 +1,6 @@
 package jp.co.updates.swingcheck.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
@@ -7,6 +8,9 @@ import jp.co.updates.swingcheck.core.BallResult
 import jp.co.updates.swingcheck.core.Handedness
 
 enum class CameraView { FACE_ON } // 将来 DOWN_THE_LINE
+
+/** Swing の取り込み元。 */
+enum class SwingSource { CAPTURED, IMPORTED }
 
 enum class AnalysisStatus { PENDING, RUNNING, DONE, FAILED }
 
@@ -31,6 +35,15 @@ data class SwingEntity(
     val ballResult: BallResult? = null,
     /** 解析に使った判定ロジックの版。[AnalysisVersion.CURRENT] より小さければ再解析の対象。0 は未解析 */
     val analysisVersion: Int = 0,
+    /** アプリ内で撮影したか、保存済みの動画を読み込んだか。読み込んだ動画にはボール判定（素振りの除外）をしない */
+    @ColumnInfo(defaultValue = "'CAPTURED'") val source: SwingSource = SwingSource.CAPTURED,
+    /**
+     * 動画の時刻から実時間への補正倍率（実時間 = 動画の時刻 ÷ timeScale）。1 なら補正なし。
+     * 引き延ばされたスロー動画（時刻が 30fps などに延ばされている）を読み込んだときだけ 1 より大きい。
+     * 骨格ファイルの時刻と再生の位置は動画の時刻のまま持ち、解析（速さ・平滑化）に使うときだけ補正する。
+     * fps は補正後（実時間）の値で持つ。
+     */
+    @ColumnInfo(defaultValue = "1.0") val timeScale: Float = 1f,
 )
 
 /** design.md 10章 `position_mark`。スイングごとに P1〜P8 の 8 行。 */

@@ -35,9 +35,12 @@
     <plurals name="list_delete_message">
         <item quantity="other">%d件のスイングと動画を削除します。元に戻せません。</item>
     </plurals>
-    <string name="list_import_video">動画を取り込む（開発用）</string>
-    <string name="list_importing">取り込み中…</string>
-    <string name="list_import_failed">動画を取り込めませんでした</string>
+    <string name="list_import_video">動画を読み込む</string>
+    <string name="list_importing">読み込み中…</string>
+    <string name="list_import_done">動画を読み込みました。まもなく解析を始めます。</string>
+    <string name="list_import_done_stretched">動画を読み込みました。時刻がスロー動画として引き延ばされていたため、実際の撮影速度に合わせて補正しました。</string>
+    <string name="list_import_too_long">動画が長すぎます。スイングの部分だけに切り詰めてから（%1$d秒以内）、もう一度読み込んでください。</string>
+    <string name="list_import_failed">動画を読み込めませんでした</string>
 
     <!-- 解析結果 -->
     <string name="result_title">解析結果</string>

@@ -23,9 +23,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 骨格の列（平滑化後、ピクセル座標）と、各コマの時刻。 */
-class LoadedPose(val smoothed: PixelSequence) {
-    val timestampsMs = LongArray(smoothed.size) { smoothed.poses[it].timestampMs }
+/**
+ * 骨格の列（平滑化後、ピクセル座標。時刻は実時間）と、各コマの動画の時刻。
+ * 再生の位置の指定とコマ番号の変換には [timestampsMs]（動画の時刻）を使う。
+ */
+class LoadedPose(val smoothed: PixelSequence, val timestampsMs: LongArray) {
     val frameCount: Int get() = smoothed.size
 }
 
@@ -53,15 +55,16 @@ class ResultViewModel(private val container: AppContainer, private val swingId: 
         viewModelScope.launch {
             val s = swing.first { it?.analysisStatus == AnalysisStatus.DONE }!!
             try {
-                val sequence = repository.loadPoseSequence(swingId)
-                if (sequence == null || sequence.size == 0) {
+                val stored = repository.loadPose(swingId)
+                val sequence = stored?.sequence
+                if (stored == null || sequence == null || sequence.size == 0) {
                     loadFailed = true
                     return@launch
                 }
                 val smoothed = withContext(Dispatchers.Default) { Preprocessor.preprocess(sequence, s.handedness) }
                 val p1 = repository.getMarks(swingId).firstOrNull { it.position == Phase.P1.number }?.frame ?: 0
                 currentFrame = p1.coerceIn(0, smoothed.size - 1)
-                pose = LoadedPose(smoothed)
+                pose = LoadedPose(smoothed, stored.videoTimestampsMs)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

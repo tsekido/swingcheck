@@ -14,10 +14,12 @@ import jp.co.updates.swingcheck.data.SwingDao
 import jp.co.updates.swingcheck.data.SwingEntity
 import jp.co.updates.swingcheck.data.SwingFiles
 import jp.co.updates.swingcheck.data.SwingRepository
+import jp.co.updates.swingcheck.data.SwingSource
 import jp.co.updates.swingcheck.pose.PoseEstimator
 import jp.co.updates.swingcheck.pose.PoseFileFormat
 import jp.co.updates.swingcheck.pose.PoseFrames
 import jp.co.updates.swingcheck.settings.SettingsRepository
+import jp.co.updates.swingcheck.video.TimeScale
 import jp.co.updates.swingcheck.video.VideoFrameReader
 import jp.co.updates.swingcheck.video.VideoInfo
 import kotlinx.coroutines.CancellationException
@@ -98,17 +100,17 @@ class AnalysisPipeline(
 
         // 2. 骨格の列を保存
         withContext(Dispatchers.IO) { PoseFileFormat.write(files.poseFile(swing.id), poseFrames) }
-        dao.updateVideoInfo(swing.id, info.fps, poseFrames.size, size.first, size.second)
+        dao.updateVideoInfo(swing.id, info.fps * swing.timeScale, poseFrames.size, size.first, size.second)
 
-        // 3. Pの判定と数値
-        val sequence = PoseSequence(poseFrames, size.first, size.second)
+        // 3. Pの判定と数値（引き延ばされたスロー動画は、時刻を実時間に直してから）
+        val sequence = PoseSequence(AnalysisTime.toRealTime(poseFrames, swing.timeScale), size.first, size.second)
         val analysis = withContext(Dispatchers.Default) {
             SwingAnalyzer(handedness = swing.handedness).analyze(sequence)
         }
 
-        // 4. ボール判定（設定でオンのときだけ）
+        // 4. ボール判定（設定でオンのときだけ。読み込んだ動画は、ユーザーが選んだものなので消さない）
         var ball: BallResult? = null
-        if (settings.current().practiceFilterEnabled) {
+        if (swing.source == SwingSource.CAPTURED && settings.current().practiceFilterEnabled) {
             ball = detectBall(reader, info, analysis.phases[Phase.P1].frame, poseFrames.size - 1) { p1 ->
                 AnalysisMapper.toPoseFrame(analysis.smoothed.poses[p1], analysis.smoothed)
             }
@@ -180,6 +182,21 @@ class AnalysisPipeline(
 
         /** MediaPipe に渡す画像の長辺（ピクセル）。モデルの入力は 256 前後なので、これで十分。 */
         const val POSE_INPUT_MAX_LONG_SIDE = 640
+    }
+}
+
+object AnalysisTime {
+    /**
+     * 骨格の列の時刻（動画の時刻）を、解析に使う実時間に直す。補正なし（[timeScale] が 1）なら、そのまま返す。
+     * ミリ秒に丸めるので、時刻が増え続けるように [Timestamps.nextAfter] で整える。
+     */
+    fun toRealTime(frames: List<PoseFrame>, timeScale: Float): List<PoseFrame> {
+        if (timeScale == 1f) return frames
+        var last = -1L
+        return frames.map { f ->
+            last = Timestamps.nextAfter(last, TimeScale.toRealMs(f.timestampMs, timeScale))
+            PoseFrame(last, f.landmarks)
+        }
     }
 }
 

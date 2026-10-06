@@ -1,5 +1,6 @@
 package jp.co.updates.swingcheck.data
 
+import jp.co.updates.swingcheck.analysis.AnalysisTime
 import jp.co.updates.swingcheck.analysis.MetricsJson
 import jp.co.updates.swingcheck.analysis.PhaseCorrection
 import jp.co.updates.swingcheck.core.Phase
@@ -12,6 +13,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+
+/** 保存してある骨格の列。[sequence] は解析用の実時間、[videoTimestampsMs] は動画の時刻（動画の先頭が 0）。 */
+class StoredPose(val sequence: PoseSequence, val videoTimestampsMs: LongArray)
 
 class SwingRepository(
     private val dao: SwingDao,
@@ -49,12 +53,21 @@ class SwingRepository(
     /** 身長（cm）の更新。数値はピクセルで保存しているので、cm の計算し直しは表示側で行う。 */
     suspend fun updateHeightCm(id: Long, heightCm: Float?) = dao.updateHeight(id, heightCm)
 
-    /** 保存してある骨格の列。解析が終わっていなければ null。 */
-    suspend fun loadPoseSequence(swingId: Long): PoseSequence? {
+    /**
+     * 保存してある骨格の列。解析が終わっていなければ null。
+     * [StoredPose.sequence] の時刻は解析に使う実時間、[StoredPose.videoTimestampsMs] は動画の時刻（再生の位置の指定用）。
+     */
+    suspend fun loadPose(swingId: Long): StoredPose? {
         val swing = dao.get(swingId) ?: return null
         val file = files.poseFile(swingId)
         if (!file.exists()) return null
-        return withContext(Dispatchers.IO) { PoseSequence(PoseFileFormat.read(file), swing.width, swing.height) }
+        return withContext(Dispatchers.IO) {
+            val frames = PoseFileFormat.read(file)
+            StoredPose(
+                PoseSequence(AnalysisTime.toRealTime(frames, swing.timeScale), swing.width, swing.height),
+                LongArray(frames.size) { frames[it].timestampMs },
+            )
+        }
     }
 
     /** Pのコマを手で直し、数値を計算し直して保存する。P1 を直したときは全Pの数値が変わる。 */
@@ -71,7 +84,7 @@ class SwingRepository(
         val swing = dao.get(swingId) ?: throw IllegalArgumentException("swing not found: $swingId")
         val marks = dao.getMarks(swingId)
         check(marks.size == Phase.entries.size) { "swing $swingId has no analysis result" }
-        val sequence = loadPoseSequence(swingId) ?: throw IllegalStateException("pose file missing: $swingId")
+        val sequence = loadPose(swingId)?.sequence ?: throw IllegalStateException("pose file missing: $swingId")
 
         val target = marks[phase.ordinal]
         val newFrame = manualFrame ?: target.autoFrame
