@@ -6,6 +6,7 @@ import jp.co.updates.swingcheck.core.BallResult
 import jp.co.updates.swingcheck.core.GrayImage
 import jp.co.updates.swingcheck.core.Phase
 import jp.co.updates.swingcheck.core.PoseFrame
+import jp.co.updates.swingcheck.core.PoseInterpolation
 import jp.co.updates.swingcheck.core.PoseSequence
 import jp.co.updates.swingcheck.core.SwingAnalyzer
 import jp.co.updates.swingcheck.data.AnalysisStatus
@@ -58,7 +59,11 @@ class AnalysisPipeline(
     /** 解析の時間の内訳（ミリ秒）。ログ用。 */
     private class Timing {
         var poseMs = 0L
+        var copyMs = 0L
+        var convertMs = 0L
+        var inferMs = 0L
         var frames = 0
+        var estimated = 0
     }
 
     private suspend fun analyze(swing: SwingEntity) {
@@ -77,7 +82,9 @@ class AnalysisPipeline(
             Log.i(
                 TAG,
                 "timing swing=${swing.id} result=$outcome frames=${timing.frames} " +
-                    "decode_ms=${estimateMs - timing.poseMs} pose_ms=${timing.poseMs} total_ms=$totalMs",
+                    "estimated=${timing.estimated} " +
+                    "decode_ms=${estimateMs - timing.poseMs} pose_ms=${timing.poseMs} " +
+                    "copy_ms=${timing.copyMs} convert_ms=${timing.convertMs} infer_ms=${timing.inferMs} total_ms=$totalMs",
             )
         }
     }
@@ -129,26 +136,57 @@ class AnalysisPipeline(
         timing: Timing,
     ): Pair<List<Pair<PoseFrame, Boolean>>, Pair<Int, Int>> = withContext(Dispatchers.Default) {
         val out = ArrayList<Pair<PoseFrame, Boolean>>(info.frameCount)
+        val estimatedFlags = ArrayList<Boolean>(info.frameCount)
         var size = info.width to info.height
         var lastTs = -1L
+        // 高 fps の動画は、推定を POSE_TARGET_FPS 前後まで間引く（残りは後で補間する）
+        val step = poseStep(info.fps)
         estimatorFactory().use { estimator ->
             reader.decode(info) { frame ->
                 ensureActive()
+                val estimate = frame.index % step == 0 || frame.index == info.frameCount - 1
+                if (!estimate) {
+                    // 補間するので時刻だけ入れておく。YUV のコピーも変換もしない
+                    out += PoseFrames.undetected(frame.timestampMs) to false
+                    estimatedFlags += false
+                    timing.frames++
+                    return@decode true
+                }
                 val ts = Timestamps.nextAfter(lastTs, frame.timestampMs)
                 lastTs = ts
                 // 骨格の座標は正規化座標なので、縮小しても結果の意味は変わらない。保存する動画の大きさは元のまま
                 val poseStart = System.nanoTime()
+                frame.displaySize() // YUV のコピーはここで行われる（初回の呼び出しで）
+                val t1 = System.nanoTime()
+                if (out.isEmpty()) size = frame.displaySize()
                 val bitmap = frame.toBitmap(POSE_INPUT_MAX_LONG_SIDE)
+                val t2 = System.nanoTime()
                 try {
-                    if (out.isEmpty()) size = frame.displaySize()
                     val pose = estimator.estimate(bitmap, ts)
                     out += if (pose != null) pose to true else PoseFrames.undetected(ts) to false
+                    estimatedFlags += true
                 } finally {
                     bitmap.recycle()
-                    timing.poseMs += (System.nanoTime() - poseStart) / 1_000_000
+                    val t3 = System.nanoTime()
+                    timing.copyMs += (t1 - poseStart) / 1_000_000
+                    timing.convertMs += (t2 - t1) / 1_000_000
+                    timing.inferMs += (t3 - t2) / 1_000_000
+                    timing.poseMs += (t3 - poseStart) / 1_000_000
                     timing.frames++
+                    timing.estimated++
                 }
                 true
+            }
+        }
+        if (step > 1) {
+            // 推定したコマの検出フラグは本物の結果。補間で埋めたコマは、前後がともに検出できていれば検出済みとする
+            val poses = out.mapTo(ArrayList(out.size)) { it.first }
+            val flags = estimatedFlags.toBooleanArray()
+            PoseInterpolation.fill(poses, flags) { PoseFrames.undetected(it) }
+            for (i in poses.indices) {
+                val detected = if (flags[i]) out[i].second else
+                    poses[i].landmarks.any { it.visibility > 0f }
+                out[i] = poses[i] to detected
             }
         }
         out to size
@@ -180,6 +218,15 @@ class AnalysisPipeline(
 
         /** MediaPipe に渡す画像の長辺（ピクセル）。モデルの入力は 256 前後なので、これで十分。 */
         const val POSE_INPUT_MAX_LONG_SIDE = 640
+
+        /**
+         * 骨格推定する fps の目標。これより高い fps の動画は、整数コマおきに間引いて推定し、
+         * 間のコマは前後から線形補間する（240fps なら 2 コマに 1 コマ）。
+         */
+        const val POSE_TARGET_FPS = 120f
+
+        /** 何コマに 1 コマ推定するか。目標以下の fps なら 1（間引かない）。 */
+        fun poseStep(fps: Float): Int = maxOf(1, Math.round(fps / POSE_TARGET_FPS))
     }
 }
 

@@ -124,30 +124,53 @@ object YuvConverter {
             bu = fix(1.772 * chromaScale)
         }
 
+        // 元画像のどこを読むかは、出力の列 dx だけで決まる部分と行 dy だけで決まる部分の和になる
+        // （回転しても同じ）。先に表を作って、内側のループでは足し算だけにする
+        val yCol = IntArray(tw)
+        val yRow = IntArray(th)
+        val uvCol = IntArray(tw)
+        val uvRow = IntArray(th)
+        for (dx in 0 until tw) {
+            val rx = ((dx * 2L + 1) * rw / (tw * 2L)).toInt().coerceIn(0, rw - 1)
+            // 回転後の (rx, ·) が元画像のどの x（または y）に当たるか
+            when (degrees) {
+                0 -> { yCol[dx] = (rx + frame.cropLeft) * frame.yPixelStride; uvCol[dx] = ((rx + frame.cropLeft) shr 1) * frame.uvPixelStride }
+                90 -> { val y = h - 1 - rx; yCol[dx] = (y + frame.cropTop) * frame.yRowStride; uvCol[dx] = ((y + frame.cropTop) shr 1) * frame.uvRowStride }
+                180 -> { val x = w - 1 - rx; yCol[dx] = (x + frame.cropLeft) * frame.yPixelStride; uvCol[dx] = ((x + frame.cropLeft) shr 1) * frame.uvPixelStride }
+                270 -> { yCol[dx] = (rx + frame.cropTop) * frame.yRowStride; uvCol[dx] = ((rx + frame.cropTop) shr 1) * frame.uvRowStride }
+                else -> throw IllegalArgumentException("rotation must be 0, 90, 180 or 270: $degrees")
+            }
+        }
         for (dy in 0 until th) {
-            // 回転後の画像での、サンプリングする行（出力の画素の中心に当たる位置）
             val ry = ((dy * 2L + 1) * rh / (th * 2L)).toInt().coerceIn(0, rh - 1)
+            when (degrees) {
+                0 -> { yRow[dy] = (ry + frame.cropTop) * frame.yRowStride; uvRow[dy] = ((ry + frame.cropTop) shr 1) * frame.uvRowStride }
+                90 -> { val x = ry; yRow[dy] = (x + frame.cropLeft) * frame.yPixelStride; uvRow[dy] = ((x + frame.cropLeft) shr 1) * frame.uvPixelStride }
+                180 -> { val y = h - 1 - ry; yRow[dy] = (y + frame.cropTop) * frame.yRowStride; uvRow[dy] = ((y + frame.cropTop) shr 1) * frame.uvRowStride }
+                270 -> { val x = w - 1 - ry; yRow[dy] = (x + frame.cropLeft) * frame.yPixelStride; uvRow[dy] = ((x + frame.cropLeft) shr 1) * frame.uvPixelStride }
+            }
+        }
+
+        val yPlane = frame.y
+        val uPlane = frame.u
+        val vPlane = frame.v
+        val round = ONE shr 1
+        var o = 0
+        for (dy in 0 until th) {
+            val yr = yRow[dy]
+            val uvr = uvRow[dy]
             for (dx in 0 until tw) {
-                val rx = ((dx * 2L + 1) * rw / (tw * 2L)).toInt().coerceIn(0, rw - 1)
-                // 回転後の (rx, ry) に対応する元画像の (x, y)
-                val x: Int
-                val y: Int
-                when (degrees) {
-                    0 -> { x = rx; y = ry }
-                    90 -> { x = ry; y = h - 1 - rx }
-                    180 -> { x = w - 1 - rx; y = h - 1 - ry }
-                    270 -> { x = w - 1 - ry; y = rx }
-                    else -> throw IllegalArgumentException("rotation must be 0, 90, 180 or 270: $degrees")
-                }
-                val yy = ((frame.y[(y + frame.cropTop) * frame.yRowStride + (x + frame.cropLeft) * frame.yPixelStride].toInt() and 0xFF) - yOffset) * yScale
-                val uvIndex = ((y + frame.cropTop) shr 1) * frame.uvRowStride + ((x + frame.cropLeft) shr 1) * frame.uvPixelStride
-                val d = (frame.u[uvIndex].toInt() and 0xFF) - 128
-                val e = (frame.v[uvIndex].toInt() and 0xFF) - 128
-                val r = (yy + rv * e + (ONE shr 1)) shr SHIFT
-                val g = (yy - gu * d - gv * e + (ONE shr 1)) shr SHIFT
-                val b = (yy + bu * d + (ONE shr 1)) shr SHIFT
-                out[dy * tw + dx] =
-                    (0xFF shl 24) or (r.coerceIn(0, 255) shl 16) or (g.coerceIn(0, 255) shl 8) or b.coerceIn(0, 255)
+                val yy = ((yPlane[yr + yCol[dx]].toInt() and 0xFF) - yOffset) * yScale
+                val uvIndex = uvr + uvCol[dx]
+                val d = (uPlane[uvIndex].toInt() and 0xFF) - 128
+                val e = (vPlane[uvIndex].toInt() and 0xFF) - 128
+                var r = (yy + rv * e + round) shr SHIFT
+                var g = (yy - gu * d - gv * e + round) shr SHIFT
+                var bl = (yy + bu * d + round) shr SHIFT
+                if (r < 0) r = 0 else if (r > 255) r = 255
+                if (g < 0) g = 0 else if (g > 255) g = 255
+                if (bl < 0) bl = 0 else if (bl > 255) bl = 255
+                out[o++] = (0xFF shl 24) or (r shl 16) or (g shl 8) or bl
             }
         }
         return out
