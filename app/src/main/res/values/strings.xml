@@ -37,8 +37,11 @@
         <item quantity="one">%d swing and its video will be deleted. This cannot be undone.</item>
         <item quantity="other">%d swings and their videos will be deleted. This cannot be undone.</item>
     </plurals>
-    <string name="list_import_video">Import video (debug)</string>
+    <string name="list_import_video">Import video</string>
     <string name="list_importing">Importing…</string>
+    <string name="list_import_done">Video imported. Analysis will start shortly.</string>
+    <string name="list_import_done_stretched">Video imported. Its timestamps looked stretched (slow motion), so they were corrected to the real capture speed.</string>
+    <string name="list_import_too_long">This video is too long. Trim it to just the swing (up to %1$d seconds) and import it again.</string>
     <string name="list_import_failed">Could not import the video</string>
 
     <!-- Result -->
